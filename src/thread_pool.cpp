@@ -3,11 +3,11 @@
 #include <iostream>
 
 // Realization of methods TaskQueue
-void TaskQueue::push(std::unique_ptr<Task> task)
+void TaskQueue::push(std::unique_ptr<Task> task, int priority)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_tasks.push(std::move(task));
+        m_queue.push(PrioritizedTask{priority, m_order++, std::move(task)});
     }
     m_cv.notify_one();
 }
@@ -15,13 +15,13 @@ void TaskQueue::push(std::unique_ptr<Task> task)
 std::unique_ptr<Task> TaskQueue::pop()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    m_cv.wait(lock, [this] { return !m_tasks.empty() || m_done; });
+    m_cv.wait(lock, [this] { return !m_queue.empty() || m_done; });
 
-    if (!m_tasks.empty())
+    if (!m_queue.empty())
     {
-        auto task = std::move(m_tasks.front());
-        m_tasks.pop();
-        return task;
+        auto elem = std::move(const_cast<PrioritizedTask&>(m_queue.top()));
+        m_queue.pop();
+        return std::move(elem.task);
     }
 
     return nullptr;
@@ -38,23 +38,25 @@ void TaskQueue::shutdown()
 
 
 // Realization of methods WorkerThread
-WorkerThread::WorkerThread(TaskQueue& queue)
-{
-    m_thread = std::thread([&queue]
-    {
-        while (true)
-        {
-            auto task = queue.pop();
-            if (!task) break;
-            task->execute();
-        }
-    });
-}
+WorkerThread::WorkerThread(TaskQueue& queue) : m_queue(&queue){}
 
 WorkerThread::~WorkerThread()
 {
     if (m_thread.joinable())
         m_thread.join();
+}
+
+void WorkerThread::start()
+{
+    m_thread = std::thread([this]
+   {
+       while (true)
+       {
+           auto task = m_queue->pop();
+           if (!task) break;
+           task->execute();
+       }
+   });
 }
 
 void WorkerThread::join()
@@ -86,9 +88,15 @@ ThreadPool::~ThreadPool()
     shutdown();
 }
 
-void ThreadPool::submit(std::unique_ptr<Task> task)
+void ThreadPool::submit(std::unique_ptr<Task> task, int priority)
 {
-    m_queue.push(std::move(task));
+    m_queue.push(std::move(task), priority);
+}
+
+void ThreadPool::start()
+{
+    for (auto& w : m_workers)
+        w.start();
 }
 
 void ThreadPool::shutdown()
