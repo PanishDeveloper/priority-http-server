@@ -25,7 +25,7 @@ private:
     {
         int priority;
         size_t order;
-        std::unique_ptr<Task> task;
+        mutable std::unique_ptr<Task> task;
     };
 
     struct Compare

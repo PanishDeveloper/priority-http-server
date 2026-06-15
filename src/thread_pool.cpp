@@ -19,9 +19,9 @@ std::unique_ptr<Task> TaskQueue::pop()
 
     if (!m_queue.empty())
     {
-        auto elem = std::move(const_cast<PrioritizedTask&>(m_queue.top()));
+        auto task = std::move(m_queue.top().task);
         m_queue.pop();
-        return std::move(elem.task);
+        return task;
     }
 
     return nullptr;
