@@ -1,8 +1,7 @@
 #include "server.hpp"
+#include "http_task.hpp"
 
-#include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/http.hpp>
 #include <iostream>
 
 namespace asio = boost::asio;
@@ -10,10 +9,11 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 using tcp = asio::ip::tcp;
 
-HttpServer::HttpServer(unsigned short port) : m_port(port){}
+HttpServer::HttpServer(unsigned short port, size_t numThreads) : m_port(port), m_pool(numThreads){}
 
 void HttpServer::run()
 {
+    m_pool.start();
     try
     {
         tcp::acceptor acceptor(m_ioc, tcp::endpoint(tcp::v4(), m_port));
@@ -30,18 +30,21 @@ void HttpServer::run()
                 http::request<http::string_body> request;
                 http::read(socket, buffer, request);
 
-                std::string body = "Hello from priority HTTP server";
-                http::response<http::string_body> res{http::status::ok, request.version()};
-                res.body() = body;
-                res.set(http::field::content_type, "text/plain");
-                res.set(http::field::server, "PriorityServer/1.0");
-                res.prepare_payload();
+                int priority = 0;
+                auto it = request.find("X-Priority");
+                if (it != request.end())
+                {
+                    try
+                    {
+                        priority = std::stoi(std::string(it->value()));
+                    }catch (const std::exception &) {}
+                }
 
-                http::serializer<false, http::string_body, http::fields> serializer{res};
-                http::write(socket, serializer);
+                auto task = std::make_unique<HttpTask>(std::move(socket), std::move(request));
+                m_pool.submit(std::move(task), priority);
             } catch (const std::exception &e)
             {
-                std::cerr << "Client error: " << e.what() << std::endl;
+                std::cerr << "Client request error: " << e.what() << std::endl;
             }
         }
     } catch (const std::exception &e)

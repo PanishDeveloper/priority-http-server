@@ -11,6 +11,7 @@ add_executable(prserver
         src/main.cpp
         src/server.cpp
         src/thread_pool.cpp
+        src/http_task.cpp
 )
 target_include_directories(prserver PUBLIC include)
 
