@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "http_task.hpp"
+#include "status_handler.hpp"
 
 #include <boost/beast/core/flat_buffer.hpp>
 #include <iostream>
@@ -14,6 +15,7 @@ HttpServer::HttpServer(unsigned short port, size_t numThreads) : m_port(port), m
 void HttpServer::run()
 {
     m_pool.start();
+    m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     try
     {
         tcp::acceptor acceptor(m_ioc, tcp::endpoint(tcp::v4(), m_port));
@@ -40,7 +42,7 @@ void HttpServer::run()
                     }catch (const std::exception &) {}
                 }
 
-                auto task = std::make_unique<HttpTask>(std::move(socket), std::move(request));
+                auto task = std::make_unique<HttpTask>(std::move(socket), std::move(request), m_router);
                 m_pool.submit(std::move(task), priority);
             } catch (const std::exception &e)
             {

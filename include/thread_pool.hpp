@@ -20,6 +20,12 @@ public:
     void push(std::unique_ptr<Task> task, int priority = 0);
     std::unique_ptr<Task> pop();
     void shutdown();
+    [[nodiscard]] size_t size() const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_queue.size();
+    };
+
 private:
     struct PrioritizedTask
     {
@@ -40,7 +46,7 @@ private:
     };
 
     std::priority_queue<PrioritizedTask, std::vector<PrioritizedTask>, Compare> m_queue;
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     std::condition_variable m_cv;
     bool m_done = false;
     size_t m_order = 0;
@@ -56,6 +62,7 @@ public:
 
     void start();
     void join();
+
 private:
     TaskQueue* m_queue;
     std::thread m_thread;
@@ -70,6 +77,9 @@ public:
     void submit(std::unique_ptr<Task> task, int priority = 0);
     void start();
     void shutdown();
+    size_t threadCount() const { return m_workers.size(); }
+    size_t pendingTasks() const { return m_queue.size(); }
+
 private:
     TaskQueue m_queue;
     std::vector<WorkerThread> m_workers;

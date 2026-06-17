@@ -4,14 +4,17 @@
 #include <boost/beast/http.hpp>
 
 #include "thread_pool.hpp"
+#include "router.hpp"
 
 class HttpTask : public Task
 {
 public:
     HttpTask(boost::asio::ip::tcp::socket&& socket,
-        boost::beast::http::request<boost::beast::http::string_body> request);
+             boost::beast::http::request<boost::beast::http::string_body> request, const Router& router);
     void execute() override;
+
 private:
     boost::asio::ip::tcp::socket m_socket;
     boost::beast::http::request<boost::beast::http::string_body> m_request;
+    const Router& m_router;
 };

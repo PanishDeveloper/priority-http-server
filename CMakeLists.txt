@@ -7,13 +7,26 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Boost REQUIRED COMPONENTS thread OPTIONAL_COMPONENTS system)
 
+include(FetchContent)
+FetchContent_Declare(
+        json
+        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+)
+FetchContent_MakeAvailable(json)
+
 add_executable(prserver
         src/main.cpp
         src/server.cpp
         src/thread_pool.cpp
         src/http_task.cpp
+        src/router.cpp
+        src/status_handler.cpp
 )
+
 target_include_directories(prserver PUBLIC include)
+
+target_link_libraries(prserver PRIVATE nlohmann_json::nlohmann_json)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(prserver PRIVATE -Wall -Wextra)
