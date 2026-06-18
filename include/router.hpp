@@ -18,6 +18,7 @@ class RouterTable
 public:
     void addRoute(boost::beast::http::verb method, const std::string& path, std::unique_ptr<Handler> handler);
     [[nodiscard]] Handler* findHandler(boost::beast::http::verb method, const std::string& path) const;
+    [[nodiscard]] Handler* findPrefixHandler(boost::beast::http::verb method, const std::string& path) const;
 
 private:
     std::unordered_map<std::string, std::unique_ptr<Handler>> m_routes;

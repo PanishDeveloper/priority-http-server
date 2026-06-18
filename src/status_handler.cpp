@@ -1,4 +1,6 @@
 #include "status_handler.hpp"
+#include "http_utils.hpp"
+
 #include <nlohmann/json.hpp>
 
 namespace http = boost::beast::http;
@@ -12,7 +14,5 @@ void StatusHandler::handle(const http::request<http::string_body>&, http::respon
     json["threads"] = m_pool.threadCount();
     json["queue_size"] = m_pool.pendingTasks();
 
-    res.body() = json.dump();
-    res.set(http::field::content_type, "application/json");
-    res.prepare_payload();
+    make_response(res, http::status::ok, json.dump(), "application/json");
 }

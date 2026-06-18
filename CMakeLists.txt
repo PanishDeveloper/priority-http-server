@@ -22,6 +22,7 @@ add_executable(prserver
         src/http_task.cpp
         src/router.cpp
         src/status_handler.cpp
+        src/static_file_handler.cpp
 )
 
 target_include_directories(prserver PUBLIC include)
