@@ -4,24 +4,27 @@
 #include "static_file_handler.hpp"
 
 #include <boost/beast/core/flat_buffer.hpp>
-#include <iostream>
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
 using tcp = asio::ip::tcp;
 
-HttpServer::HttpServer(unsigned short port, size_t numThreads) : m_port(port), m_pool(numThreads){}
+HttpServer::HttpServer(unsigned short port, size_t numThreads, std::unique_ptr<LogSink> sink)
+                       : m_port(port), m_pool(numThreads), m_logger(std::move(sink)){}
 
 void HttpServer::run()
 {
+    m_logger.start();
+    m_logger.log("Server starting...", LogLevel::INFO);
+
     m_pool.start();
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     m_router.addRoute(http::verb::get, "/static/", std::make_unique<StaticFileHandler>("static"));
     try
     {
         tcp::acceptor acceptor(m_ioc, tcp::endpoint(tcp::v4(), m_port));
-        std::cout << "Server listening on port " << m_port << "...\n";
+        m_logger.log("Server listening on port " + std::to_string(m_port), LogLevel::INFO);
 
         while (true)
         {
@@ -44,15 +47,15 @@ void HttpServer::run()
                     }catch (const std::exception &) {}
                 }
 
-                auto task = std::make_unique<HttpTask>(std::move(socket), std::move(request), m_router);
+                auto task = std::make_unique<HttpTask>(std::move(socket), std::move(request), m_router, m_logger);
                 m_pool.submit(std::move(task), priority);
             } catch (const std::exception &e)
             {
-                std::cerr << "Client request error: " << e.what() << std::endl;
+                m_logger.log(std::string("Client request error: ") + e.what(), LogLevel::ERROR);
             }
         }
     } catch (const std::exception &e)
     {
-        std::cerr << "Server fatal error: " << e.what() << std::endl;
+        m_logger.log(std::string("Server fatal error: " ) + e.what(), LogLevel::ERROR);
     }
 }

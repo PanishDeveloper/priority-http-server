@@ -20,11 +20,7 @@ public:
     void push(std::unique_ptr<Task> task, int priority = 0);
     std::unique_ptr<Task> pop();
     void shutdown();
-    [[nodiscard]] size_t size() const
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_queue.size();
-    };
+    [[nodiscard]] size_t size() const;
 
 private:
     struct PrioritizedTask
@@ -77,8 +73,8 @@ public:
     void submit(std::unique_ptr<Task> task, int priority = 0);
     void start();
     void shutdown();
-    size_t threadCount() const { return m_workers.size(); }
-    size_t pendingTasks() const { return m_queue.size(); }
+    inline size_t threadCount() const { return m_workers.size(); }
+    inline size_t pendingTasks() const { return m_queue.size(); }
 
 private:
     TaskQueue m_queue;

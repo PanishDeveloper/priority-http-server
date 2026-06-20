@@ -3,11 +3,13 @@
 #include <boost/asio/io_context.hpp>
 #include "thread_pool.hpp"
 #include "router.hpp"
+#include "logger.hpp"
 
 class HttpServer
 {
 public:
-    explicit HttpServer(unsigned short port, size_t numThreads = std::thread::hardware_concurrency());
+    explicit HttpServer(unsigned short port, size_t numThreads = std::thread::hardware_concurrency(),
+                        std::unique_ptr<LogSink> sink = std::make_unique<ConsoleSink>());
     void run();
 
 private:
@@ -15,4 +17,5 @@ private:
     boost::asio::io_context m_ioc;
     ThreadPool m_pool;
     Router m_router;
+    AsyncLogger m_logger;
 };

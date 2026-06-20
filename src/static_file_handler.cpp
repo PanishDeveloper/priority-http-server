@@ -1,5 +1,5 @@
 #include "static_file_handler.hpp"
-#include "http_utils.hpp"
+#include "utils.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -41,7 +41,7 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
     const std::string prefix = "/static/";
     if (target.rfind(prefix, 0) != 0)
     {
-        make_response(res, http::status::not_found, "404 Not Found");
+        utils::make_response(res, http::status::not_found, "404 Not Found");
         return;
     }
 
@@ -49,7 +49,7 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
     std::string relativePath = target.substr(prefix.length());
     if (relativePath.empty())
     {
-        make_response(res, http::status::not_found, "404 Not found");
+        utils::make_response(res, http::status::not_found, "404 Not found");
         return;
     }
 
@@ -61,7 +61,7 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
     fs::path canonicalFull = fs::weakly_canonical(fullPath, ec);
     if (ec)
     {
-        make_response(res, http::status::not_found, "404 Not found");
+        utils::make_response(res, http::status::not_found, "404 Not found");
         return;
     }
 
@@ -70,14 +70,14 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
                                                                 canonicalFull.begin(), canonicalFull.end());
     if (rootIt != m_rootCanonical.end())
     {
-        make_response(res, http::status::not_found, "404 Not found");
+        utils::make_response(res, http::status::not_found, "404 Not found");
         return;
     }
 
     // 6. Checking the existence and that it is a regular file
     if (!fs::exists(fullPath, ec) || !fs::is_regular_file(fullPath, ec))
     {
-        make_response(res, http::status::not_found, "404 Not found");
+        utils::make_response(res, http::status::not_found, "404 Not found");
         return;
     }
 
@@ -85,7 +85,7 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
     std::ifstream file(fullPath, std::ios::binary);
     if (!file.is_open())
     {
-        make_response(res, http::status::not_found, "404 Not found");
+        utils::make_response(res, http::status::not_found, "404 Not found");
         return;
     }
     std::ostringstream oss;
@@ -97,5 +97,5 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req, http
     std::string mimeType = getMimeType(extension);
 
     // 9. Answer
-    make_response(res, http::status::ok, content, mimeType);
+    utils::make_response(res, http::status::ok, content, mimeType);
 }

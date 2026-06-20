@@ -36,6 +36,11 @@ void TaskQueue::shutdown()
     m_cv.notify_all();
 }
 
+size_t TaskQueue::size() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_queue.size();
+}
 
 // Realization of methods WorkerThread
 WorkerThread::WorkerThread(TaskQueue& queue) : m_queue(&queue){}

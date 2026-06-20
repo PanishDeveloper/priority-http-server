@@ -1,5 +1,5 @@
 #include "status_handler.hpp"
-#include "http_utils.hpp"
+#include "utils.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -14,5 +14,5 @@ void StatusHandler::handle(const http::request<http::string_body>&, http::respon
     json["threads"] = m_pool.threadCount();
     json["queue_size"] = m_pool.pendingTasks();
 
-    make_response(res, http::status::ok, json.dump(), "application/json");
+    utils::make_response(res, http::status::ok, json.dump(), "application/json");
 }
