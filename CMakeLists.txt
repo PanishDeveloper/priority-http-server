@@ -8,6 +8,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Boost REQUIRED COMPONENTS thread OPTIONAL_COMPONENTS system)
 
 include(FetchContent)
+
+set(FETCHCONTENT_BASE_DIR ${CMAKE_SOURCE_DIR}/.fetchcontent_cache)
+
 FetchContent_Declare(
         json
         URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
@@ -30,8 +33,12 @@ target_include_directories(prserver PUBLIC include)
 
 target_link_libraries(prserver PRIVATE nlohmann_json::nlohmann_json)
 
-enable_testing()
-add_subdirectory(tests)
+option(BUILD_TESTS "Build tests" OFF)
+if (BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()
+
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(prserver PRIVATE -Wall -Wextra)

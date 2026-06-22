@@ -5,6 +5,7 @@ FetchContent_Declare(
         URL_HASH SHA256=65fab701d9829d38cb77c14acdc431d2108bfdbf8979e40eb8ae567edf10b27c
 )
 FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
 
 add_executable(prserver_test
         ${PROJECT_SOURCE_DIR}/src/server.cpp
@@ -15,6 +16,8 @@ add_executable(prserver_test
         ${PROJECT_SOURCE_DIR}/src/static_file_handler.cpp
         ${PROJECT_SOURCE_DIR}/src/logger.cpp
         thread_pool_test.cpp
+        router_test.cpp
+        logger_test.cpp
 )
 
 target_include_directories(prserver_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
