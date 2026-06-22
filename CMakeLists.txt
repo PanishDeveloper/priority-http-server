@@ -30,6 +30,9 @@ target_include_directories(prserver PUBLIC include)
 
 target_link_libraries(prserver PRIVATE nlohmann_json::nlohmann_json)
 
+enable_testing()
+add_subdirectory(tests)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(prserver PRIVATE -Wall -Wextra)
 elseif(MSVC)
