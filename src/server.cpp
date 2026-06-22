@@ -1,115 +1,223 @@
 #include "server.hpp"
 
+#include <atomic>
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/system/errc.hpp>
+#include <memory>
 
-#include "http_task.hpp"
+// #include "http_task.hpp"
 #include "static_file_handler.hpp"
 #include "status_handler.hpp"
+#include "utils.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
 namespace http  = beast::http;
 using tcp       = asio::ip::tcp;
 
-HttpServer::HttpServer (asio::io_context& ioc, unsigned short port, size_t numThreads,
-                        std::unique_ptr<LogSink> sink)
-    : m_ioc (ioc),
-      m_port (port),
-      m_pool (numThreads),
-      m_logger (std::move (sink)),
-      m_signals (m_ioc, SIGINT, SIGTERM)
+HttpServer::HttpServer(asio::io_context& ioc, unsigned short port, size_t numThreads,
+                       std::unique_ptr<LogSink> sink)
+    : m_ioc(ioc),
+      m_port(port),
+      m_pool(numThreads),
+      m_logger(std::move(sink)),
+      m_signals(m_ioc, SIGINT, SIGTERM)
 {
 }
 
-void HttpServer::run ()
+void HttpServer::run()
 {
-    m_logger.start ();
-    m_logger.log ("Server starting...", LogLevel::INFO);
+    setup();
+    startAcceptorLoop();
+    m_ioc.run();
+    shutdown();
+}
 
-    m_signals.async_wait (
-        [this] (const boost::system::error_code& ec, int signal)
+void HttpServer::setup()
+{
+    m_logger.start();
+    m_logger.log("Server starting...", LogLevel::INFO);
+
+    m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
+    m_router.addRoute(http::verb::get, "/static/", std::make_unique<StaticFileHandler>("static"));
+
+    m_pool.start();
+
+    m_signals.async_wait(
+        [this](const boost::system::error_code& ec, int signal)
         {
             if (!ec)
             {
-                m_shutdownRequested = true;
-                m_logger.log ("Shutdown signal received (SIG " + std::to_string (signal) + ")",
-                              LogLevel::INFO);
-                m_ioc.stop ();
+                m_logger.log("Shutdown signal received (SIG " + std::to_string(signal) + ")",
+                             LogLevel::INFO);
+                m_ioc.stop();
             }
         });
+}
 
-    m_pool.start ();
-    m_router.addRoute (http::verb::get, "/status", std::make_unique<StatusHandler> (m_pool));
-    m_router.addRoute (http::verb::get, "/static/", std::make_unique<StaticFileHandler> ("static"));
+void HttpServer::startAcceptorLoop()
+{
+    m_acceptor = std::make_unique<tcp::acceptor>(m_ioc, tcp::endpoint(tcp::v4(), m_port));
+    m_logger.log("Server listening on port " + std::to_string(m_port), LogLevel::INFO);
 
-    tcp::acceptor acceptor (m_ioc, tcp::endpoint (tcp::v4 (), m_port));
-    m_logger.log ("Server listening on port " + std::to_string (m_port), LogLevel::INFO);
+    doAccept();
 
-    while (!m_shutdownRequested)
+    unsigned int numIoThreads = std::thread::hardware_concurrency();
+    if (numIoThreads == 0)
+        numIoThreads = 2;
+    if (numIoThreads > 4)
+        numIoThreads = 4;
+
+    m_ioThreads.reserve(numIoThreads);
+    for (unsigned int i = 0; i < numIoThreads; ++i)
+        m_ioThreads.emplace_back([this] { m_ioc.run(); });
+}
+
+void HttpServer::doAccept()
+{
+    if (m_ioc.stopped())
+        return;
+
+    auto socket = std::make_shared<tcp::socket>(m_ioc);
+
+    m_acceptor->async_accept(
+        *socket,
+        [this, socket](const boost::system::error_code& ec)
+        {
+            if (ec)
+            {
+                if (ec == asio::error::operation_aborted)
+                {
+                    m_logger.log("Accept interrupted by shutdown, exiting...", LogLevel::INFO);
+                    return;
+                }
+                m_logger.log(std::string("Accept error: ") + ec.message(), LogLevel::ERROR);
+                doAccept();
+                return;
+            }
+            handleSession(socket, [this]() { doAccept(); });
+        });
+}
+
+void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
+                               std::function<void()>               restartAccept)
+{
+    auto buffer  = std::make_shared<beast::flat_buffer>();
+    auto request = std::make_shared<http::request<http::string_body>>();
+
+    auto onReadCompleted =
+        [this, socket, buffer, request, restartAccept = std::move(restartAccept)](
+            const boost::system::error_code& ec, std::size_t) mutable
     {
-        tcp::socket socket (m_ioc);
-        try
+        (void)buffer;
+
+        // Handling of reading errors
+        if (ec)
         {
-            acceptor.accept (socket);
-        }
-        catch (const boost::system::system_error& e)
-        {
-            if (e.code () == asio::error::operation_aborted ||
-                e.code () == boost::system::errc::interrupted)
+            if (ec == http::error::end_of_stream || ec == asio::error::eof)
             {
-                m_logger.log ("Accept interrupted by shutdown, exiting...", LogLevel::INFO);
+                m_logger.log("Connection closed by client", LogLevel::INFO);
             }
             else
             {
-                m_logger.log (std::string ("Accept error: ") + e.what (), LogLevel::ERROR);
+                m_logger.log(std::string("Client request error: ") + ec.message(), LogLevel::ERROR);
             }
-            break;
-        }
-        catch (const std::exception& e)
-        {
-            m_logger.log (std::string ("Accept error: ") + e.what (), LogLevel::ERROR);
-            break;
+            restartAccept();
+            return;
         }
 
-        try
+        // Extracting Priority
+        int  priority = 0;
+        auto it       = request->find("X-Priority");
+        if (it != request->end())
         {
-            beast::flat_buffer               buffer;
-            http::request<http::string_body> request;
-            http::read (socket, buffer, request);
+            try
+            {
+                priority = std::stoi(std::string(it->value()));
+            }
+            catch (...)
+            {
+                m_logger.log("Invalid priority header, ignoring", LogLevel::WARNING);
+            }
+        }
 
-            int  priority = 0;
-            auto it       = request.find ("X-Priority");
-            if (it != request.end ())
-                try
-                {
-                    priority = std::stoi (std::string (it->value ()));
-                }
-                catch (const std::exception&)
-                {
-                }
+        // Sampling priority logging
+        if (priority != 0)
+        {
+            static std::atomic<unsigned int> nonZeroCounter{0};
+            unsigned int                     current     = ++nonZeroCounter;
+            const unsigned int               SAMPLE_RATE = 10;
 
-            auto task = std::make_unique<HttpTask> (std::move (socket), std::move (request),
-                                                    m_router, m_logger);
-            m_pool.submit (std::move (task), priority);
+            if (current % SAMPLE_RATE == 0)
+            {
+                m_logger.log("Request priority: " + std::to_string(priority) +
+                                 " (sampled, total non-zero=" + std::to_string(current) + ")",
+                             LogLevel::INFO);
+            }
         }
-        catch (boost::system::system_error& e)
-        {
-            if (e.code () == asio::error::eof || e.code () == http::error::end_of_stream)
-                m_logger.log ("Connection closed by client", LogLevel::INFO);
-            else
-                m_logger.log (std::string ("Client request error: ") + e.what (), LogLevel::ERROR);
-        }
-        catch (const std::exception& e)
-        {
-            m_logger.log (std::string ("Client request error: ") + e.what (), LogLevel::ERROR);
-        }
+
+        // Forming a response
+        http::response<http::string_body> response = processRequest(*request);
+
+        auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(response));
+
+        // Launching asynchronous sending
+        asyncSendResponse(socket, responsePtr, std::move(restartAccept));
+    };
+
+    http::async_read(*socket, *buffer, *request, std::move(onReadCompleted));
+}
+
+// Business logic: forming a response
+http::response<http::string_body> HttpServer::processRequest(
+    const http::request<http::string_body>& req) const
+{
+    http::response<http::string_body> res;
+
+    if (!m_router.route(req, res))
+    {
+        utils::sendNotFound(res);
     }
 
-    m_logger.log ("Shutting down pool...", LogLevel::INFO);
-    m_pool.shutdown ();
+    res.set(http::field::server, "PriorityHttpServer/1.0");
+    res.prepare_payload();
 
-    m_logger.log ("Shutting down logger...", LogLevel::INFO);
-    m_logger.log ("Server stopped.", LogLevel::INFO);
-    m_logger.shutdown ();
+    return res;
+}
+
+// Asynchronous sending of a response
+void HttpServer::asyncSendResponse(std::shared_ptr<tcp::socket>                       socket,
+                                   std::shared_ptr<http::response<http::string_body>> response,
+                                   std::function<void()>                              restartAccept)
+{
+    http::async_write(*socket, *response,
+                      [this, socket = std::move(socket), response = std::move(response),
+                       restartAccept = std::move(restartAccept)](
+                          const boost::system::error_code& ec, std::size_t) mutable
+                      {
+                          (void)socket;
+                          (void)response;
+
+                          if (ec)
+                          {
+                              m_logger.log(std::string("Write error: ") + ec.message(),
+                                           LogLevel::ERROR);
+                          }
+                          // After sending, we resume accepting new connections.
+                          restartAccept();
+                      });
+}
+
+void HttpServer::shutdown()
+{
+    for (auto& th : m_ioThreads)
+        if (th.joinable())
+            th.join();
+
+    m_logger.log("Shutting down pool...", LogLevel::INFO);
+    m_pool.shutdown();
+
+    m_logger.log("Shutting down logger...", LogLevel::INFO);
+    m_logger.log("Server stopped.", LogLevel::INFO);
+    m_logger.shutdown();
 }

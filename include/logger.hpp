@@ -22,9 +22,9 @@ struct LogMessage
     std::chrono::system_clock::time_point timestamp;
     LogLevel                              level = LogLevel::INFO;
 
-    LogMessage () = default;
-    LogMessage (std::string msg, LogLevel lvl)
-        : message (std::move (msg)), timestamp (std::chrono::system_clock::now ()), level (lvl)
+    LogMessage() = default;
+    LogMessage(std::string msg, LogLevel lvl)
+        : message(std::move(msg)), timestamp(std::chrono::system_clock::now()), level(lvl)
     {
     }
 };
@@ -32,10 +32,10 @@ struct LogMessage
 class MessageQueue
 {
 public:
-    void                 push (const LogMessage& msg);
-    LogMessage           pop ();
-    void                 shutdown ();
-    [[nodiscard]] size_t size () const;
+    void                 push(const LogMessage& msg);
+    LogMessage           pop();
+    void                 shutdown();
+    [[nodiscard]] size_t size() const;
 
 private:
     std::queue<LogMessage>  m_queue;
@@ -47,22 +47,22 @@ private:
 class LogSink
 {
 public:
-    virtual ~LogSink ()                        = default;
-    virtual void write (const LogMessage& msg) = 0;
+    virtual ~LogSink()                        = default;
+    virtual void write(const LogMessage& msg) = 0;
 };
 
 class ConsoleSink : public LogSink
 {
 public:
-    void write (const LogMessage& msg) override;
+    void write(const LogMessage& msg) override;
 };
 
 class FileSink : public LogSink
 {
 public:
-    explicit FileSink (const std::string& filePath);
-    ~FileSink () override;
-    void write (const LogMessage& msg) override;
+    explicit FileSink(const std::string& filePath);
+    ~FileSink() override;
+    void write(const LogMessage& msg) override;
 
 private:
     std::ofstream m_file;
@@ -71,11 +71,11 @@ private:
 class LogConsumer
 {
 public:
-    explicit LogConsumer (MessageQueue& queue, LogSink& sink);
-    ~LogConsumer ();
+    explicit LogConsumer(MessageQueue& queue, LogSink& sink);
+    ~LogConsumer();
 
-    void start ();
-    void join ();
+    void start();
+    void join();
 
 private:
     MessageQueue& m_queue;
@@ -86,12 +86,12 @@ private:
 class AsyncLogger
 {
 public:
-    explicit AsyncLogger (std::unique_ptr<LogSink> sink);
-    ~AsyncLogger ();
+    explicit AsyncLogger(std::unique_ptr<LogSink> sink);
+    ~AsyncLogger();
 
-    void log (const std::string& message, LogLevel level = LogLevel::INFO);
-    void start ();
-    void shutdown ();
+    void log(const std::string& message, LogLevel level = LogLevel::INFO);
+    void start();
+    void shutdown();
 
 private:
     MessageQueue             m_queue;

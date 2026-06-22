@@ -10,17 +10,17 @@
 class Task
 {
 public:
-    virtual ~Task ()        = default;
-    virtual void execute () = 0;
+    virtual ~Task()        = default;
+    virtual void execute() = 0;
 };
 
 class TaskQueue
 {
 public:
-    void                  push (std::unique_ptr<Task> task, int priority = 0);
-    std::unique_ptr<Task> pop ();
-    void                  shutdown ();
-    [[nodiscard]] size_t  size () const;
+    void                  push(std::unique_ptr<Task> task, int priority = 0);
+    std::unique_ptr<Task> pop();
+    void                  shutdown();
+    [[nodiscard]] size_t  size() const;
 
 private:
     struct PrioritizedTask
@@ -32,7 +32,7 @@ private:
 
     struct Compare
     {
-        bool operator() (const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
+        bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
             if (lhs.priority != rhs.priority)
                 return lhs.priority < rhs.priority;
@@ -51,13 +51,13 @@ private:
 class WorkerThread
 {
 public:
-    explicit WorkerThread (TaskQueue& queue);
-    ~WorkerThread ();
-    WorkerThread (WorkerThread&&)                     = default;
-    WorkerThread& operator= (WorkerThread&&) noexcept = default;
+    explicit WorkerThread(TaskQueue& queue);
+    ~WorkerThread();
+    WorkerThread(WorkerThread&&)                     = default;
+    WorkerThread& operator=(WorkerThread&&) noexcept = default;
 
-    void start ();
-    void join ();
+    void start();
+    void join();
 
 private:
     TaskQueue*  m_queue;
@@ -67,14 +67,14 @@ private:
 class ThreadPool
 {
 public:
-    explicit ThreadPool (size_t numThreads = std::thread::hardware_concurrency ());
-    ~ThreadPool ();
+    explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
+    ~ThreadPool();
 
-    void                 submit (std::unique_ptr<Task> task, int priority = 0);
-    void                 start ();
-    void                 shutdown ();
-    [[nodiscard]] size_t threadCount () const { return m_workers.size (); }
-    [[nodiscard]] size_t pendingTasks () const { return m_queue.size (); }
+    void                 submit(std::unique_ptr<Task> task, int priority = 0);
+    void                 start();
+    void                 shutdown();
+    [[nodiscard]] size_t threadCount() const { return m_workers.size(); }
+    [[nodiscard]] size_t pendingTasks() const { return m_queue.size(); }
 
 private:
     TaskQueue                 m_queue;

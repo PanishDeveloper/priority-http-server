@@ -10,10 +10,10 @@
 class HttpTask : public Task
 {
 public:
-    HttpTask (boost::asio::ip::tcp::socket&&                               socket,
-              boost::beast::http::request<boost::beast::http::string_body> request,
-              const Router& router, AsyncLogger& logger);
-    void execute () override;
+    HttpTask(boost::asio::ip::tcp::socket&&                               socket,
+             boost::beast::http::request<boost::beast::http::string_body> request,
+             const Router& router, AsyncLogger& logger);
+    void execute() override;
 
 private:
     boost::asio::ip::tcp::socket                                 m_socket;

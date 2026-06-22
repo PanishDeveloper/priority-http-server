@@ -5,7 +5,7 @@ ColumnLimit: 100               # Maximum line length
 AllowShortFunctionsOnASingleLine: Inline
 SortIncludes: true            # Sort #include lines
 BreakBeforeBraces: Allman     # Place braces on a new line
-SpaceBeforeParens: Always     # Space before function parentheses
+SpaceBeforeParens: ControlStatements     # Space before function parentheses
 DerivePointerAlignment: false  # Don't auto-detect from existing code
 PointerAlignment: Left
 AlignConsecutiveAssignments: true
