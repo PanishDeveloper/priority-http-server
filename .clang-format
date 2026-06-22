@@ -1,0 +1,16 @@
+BasedOnStyle: Google
+IndentWidth: 2                # Number of spaces per indentation level
+UseTab: Never                 # Use spaces instead of tabs
+ColumnLimit: 80               # Maximum line length
+AllowShortFunctionsOnASingleLine: Inline
+SortIncludes: true            # Sort #include lines
+BreakBeforeBraces: Allman     # Place braces on a new line
+SpaceBeforeParens: Always     # Space before function parentheses
+DerivePointerAlignment: false  # Don't auto-detect from existing code
+PointerAlignment: Left
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AllowShortIfStatementsOnASingleLine: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Cpp11BracedListStyle: true
