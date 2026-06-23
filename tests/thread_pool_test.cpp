@@ -123,3 +123,24 @@ TEST(ThreadPoolTest, NoExecutionBeforeStart)
 
     EXPECT_EQ(results.size(), 5);
 }
+
+TEST(TaskQueueTest, AgingMakesLowPriorityFirst)
+{
+    TaskQueue        queue;
+    std::vector<int> results;
+    std::mutex       mutex;
+
+    queue.push(std::make_unique<DammyTask>(1, results, mutex, 0), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+    queue.push(std::make_unique<DammyTask>(2, results, mutex, 0), 10);
+
+    auto task1 = queue.pop();
+    task1->execute();
+    auto task2 = queue.pop();
+    task2->execute();
+
+    EXPECT_EQ(results.size(), 2);
+    EXPECT_EQ(results[0], 1);
+    EXPECT_EQ(results[1], 2);
+}
