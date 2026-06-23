@@ -7,7 +7,9 @@ void TaskQueue::push(std::unique_ptr<Task> task, int priority)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_queue.push(PrioritizedTask{priority, m_order++, std::move(task)});
+        m_queue.push_back(PrioritizedTask{priority, m_order++, std::move(task),
+                                          std::chrono::steady_clock::now()});
+        std::push_heap(m_queue.begin(), m_queue.end(), Compare{});
     }
     m_cv.notify_one();
 }
@@ -19,8 +21,9 @@ std::unique_ptr<Task> TaskQueue::pop()
 
     if (!m_queue.empty())
     {
-        auto task = std::move(m_queue.top().task);
-        m_queue.pop();
+        std::pop_heap(m_queue.begin(), m_queue.end(), Compare{});
+        auto task = std::move(m_queue.back().task);
+        m_queue.pop_back();
         return task;
     }
 

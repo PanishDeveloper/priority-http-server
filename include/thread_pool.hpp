@@ -1,9 +1,9 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <vector>
 
@@ -25,27 +25,42 @@ public:
 private:
     struct PrioritizedTask
     {
-        int                           priority;
-        size_t                        order;
-        mutable std::unique_ptr<Task> task;
+        int                                   priority;
+        size_t                                order;
+        std::unique_ptr<Task>                 task;
+        std::chrono::steady_clock::time_point added;
     };
 
     struct Compare
     {
+        static constexpr std::chrono::seconds AGING_THRESHOLD{1};
         bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
+            auto now     = std::chrono::steady_clock::now();
+            bool lhsAged = (now - lhs.added) > AGING_THRESHOLD;
+            bool rhsAged = (now - rhs.added) > AGING_THRESHOLD;
+
+            if (lhsAged && rhsAged)
+            {
+                if (lhs.priority != rhs.priority)
+                    return lhs.priority < rhs.priority;
+                return lhs.order > rhs.order;
+            }
+
+            if (lhsAged != rhsAged)
+                return !lhsAged;
+
             if (lhs.priority != rhs.priority)
                 return lhs.priority < rhs.priority;
-
             return lhs.order > rhs.order;
         }
     };
 
-    std::priority_queue<PrioritizedTask, std::vector<PrioritizedTask>, Compare> m_queue;
-    mutable std::mutex                                                          m_mutex;
-    std::condition_variable                                                     m_cv;
-    bool                                                                        m_done  = false;
-    size_t                                                                      m_order = 0;
+    std::vector<PrioritizedTask> m_queue;
+    mutable std::mutex           m_mutex;
+    std::condition_variable      m_cv;
+    bool                         m_done  = false;
+    size_t                       m_order = 0;
 };
 
 class WorkerThread
