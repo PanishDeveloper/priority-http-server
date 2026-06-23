@@ -27,6 +27,7 @@ add_executable(prserver
         src/status_handler.cpp
         src/static_file_handler.cpp
         src/logger.cpp
+        src/request_processor.cpp
 )
 
 target_include_directories(prserver PUBLIC include)

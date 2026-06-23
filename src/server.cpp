@@ -23,6 +23,7 @@ HttpServer::HttpServer(asio::io_context& ioc, unsigned short port, size_t numThr
       m_logger(std::move(sink)),
       m_signals(m_ioc, SIGINT, SIGTERM)
 {
+    m_processor = std::make_unique<RequestProcessor>(m_router, *this);
 }
 
 void HttpServer::run()
@@ -123,7 +124,7 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
                 http::response<http::string_body> res;
                 utils::make_response(res, http::status::payload_too_large, "413 Payload too large");
                 auto resPtr = std::make_shared<http::response<http::string_body>>(std::move(res));
-                asyncSendResponse(socket, resPtr, std::nullopt, std::move(restartAccept));
+                sendResponse(socket, resPtr, std::nullopt, std::move(restartAccept));
                 return;
             }
             if (ec == http::error::end_of_stream || ec == asio::error::eof)
@@ -174,37 +175,14 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
             }
         }
 
-        // Forming a response
-        http::response<http::string_body> response = processRequest(request);
-
-        auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(response));
-
-        // Launching asynchronous sending
-        asyncSendResponse(socket, responsePtr, request, std::move(restartAccept));
+        m_processor->process(request, priority, socket, std::move(restartAccept));
     };
 
     http::async_read(*socket, *buffer, *parser, std::move(onReadCompleted));
 }
 
-// Business logic: forming a response
-http::response<http::string_body> HttpServer::processRequest(
-    const http::request<http::string_body>& req) const
-{
-    http::response<http::string_body> res;
-
-    if (!m_router.route(req, res))
-    {
-        utils::sendNotFound(res);
-    }
-
-    res.set(http::field::server, "PriorityHttpServer/1.0");
-    res.prepare_payload();
-
-    return res;
-}
-
 // Asynchronous sending of a response
-void HttpServer::asyncSendResponse(
+void HttpServer::sendResponse(
     std::shared_ptr<tcp::socket>                                                  socket,
     std::shared_ptr<http::response<http::string_body>>                            response,
     std::optional<std::reference_wrapper<const http::request<http::string_body>>> request,

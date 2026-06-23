@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "logger.hpp"
+#include "request_processor.hpp"
 #include "router.hpp"
 #include "thread_pool.hpp"
 
@@ -19,6 +20,11 @@ public:
                         std::unique_ptr<LogSink> sink       = std::make_unique<ConsoleSink>());
     void run();
     void setLogLevel(LogLevel level) { m_logger.setMinLevel(level); }
+    void sendResponse(
+        std::shared_ptr<boost::asio::ip::tcp::socket>                                 socket,
+        std::shared_ptr<http::response<http::string_body>>                            response,
+        std::optional<std::reference_wrapper<const http::request<http::string_body>>> request,
+        std::function<void()> restartAccept);
 
 private:
     void setup();
@@ -27,15 +33,6 @@ private:
     void doAccept();
     void handleSession(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
                        std::function<void()>                                restartAccept);
-
-    http::response<http::string_body> processRequest(
-        const http::request<http::string_body>& req) const;
-
-    void asyncSendResponse(
-        std::shared_ptr<boost::asio::ip::tcp::socket>                                 socket,
-        std::shared_ptr<http::response<http::string_body>>                            response,
-        std::optional<std::reference_wrapper<const http::request<http::string_body>>> request,
-        std::function<void()> restartAccept);
 
     static bool isKeepAlive(
         const std::optional<std::reference_wrapper<const http::request<http::string_body>>>&
@@ -50,4 +47,5 @@ private:
     boost::asio::signal_set                         m_signals;
     std::vector<std::thread>                        m_ioThreads;
     std::unique_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
+    std::unique_ptr<RequestProcessor>               m_processor;
 };
