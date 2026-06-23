@@ -5,6 +5,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <thread>
@@ -32,10 +33,10 @@ struct LogMessage
 class MessageQueue
 {
 public:
-    void                 push(const LogMessage& msg);
-    LogMessage           pop();
-    void                 shutdown();
-    [[nodiscard]] size_t size() const;
+    void                      push(const LogMessage& msg);
+    std::optional<LogMessage> pop();
+    void                      shutdown();
+    [[nodiscard]] size_t      size() const;
 
 private:
     std::queue<LogMessage>  m_queue;

@@ -40,7 +40,7 @@ void MessageQueue::push(const LogMessage& msg)
     m_cv.notify_one();
 }
 
-LogMessage MessageQueue::pop()
+std::optional<LogMessage> MessageQueue::pop()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     m_cv.wait(lock, [this]() { return !m_queue.empty() || m_done; });
@@ -52,7 +52,7 @@ LogMessage MessageQueue::pop()
         return msg;
     }
 
-    return {};
+    return std::nullopt;
 }
 
 void MessageQueue::shutdown()
@@ -114,10 +114,10 @@ void LogConsumer::start()
         {
             while (true)
             {
-                LogMessage msg = m_queue.pop();
-                if (msg.message.empty())
+                auto msg = m_queue.pop();
+                if (!msg.has_value())
                     break;
-                m_sink.write(msg);
+                m_sink.write(*msg);
             }
         });
 }
