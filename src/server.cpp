@@ -40,6 +40,7 @@ void HttpServer::setup()
 
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     m_router.addRoute(http::verb::get, "/static/", std::make_unique<StaticFileHandler>("static"));
+    m_router.addRoute(http::verb::head, "/static/", std::make_unique<StaticFileHandler>("static"));
 
     m_pool.start();
 
@@ -102,18 +103,29 @@ void HttpServer::doAccept()
 void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
                                std::function<void()>               restartAccept)
 {
-    auto buffer  = std::make_shared<beast::flat_buffer>();
-    auto request = std::make_shared<http::request<http::string_body>>();
+    auto buffer = std::make_shared<beast::flat_buffer>();
+    auto parser = std::make_shared<http::request_parser<http::string_body>>();
 
-    auto onReadCompleted =
-        [this, socket, buffer, request, restartAccept = std::move(restartAccept)](
-            const boost::system::error_code& ec, std::size_t) mutable
+    // Set the body limit (10 MB)
+    parser->body_limit(10 * 1024 * 1024);
+
+    auto onReadCompleted = [this, socket, buffer, parser, restartAccept = std::move(restartAccept)](
+                               const boost::system::error_code& ec, std::size_t) mutable
     {
         (void)buffer;
 
         // Handling of reading errors
         if (ec)
         {
+            if (ec == http::error::body_limit)
+            {
+                m_logger.log("Request body too large (413)", LogLevel::WARNING);
+                http::response<http::string_body> res;
+                utils::make_response(res, http::status::payload_too_large, "413 Payload too large");
+                auto resPtr = std::make_shared<http::response<http::string_body>>(std::move(res));
+                asyncSendResponse(socket, resPtr, std::move(restartAccept));
+                return;
+            }
             if (ec == http::error::end_of_stream || ec == asio::error::eof)
             {
                 m_logger.log("Connection closed by client", LogLevel::INFO);
@@ -126,10 +138,12 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
             return;
         }
 
+        const auto& request = parser->get();
+
         // Extracting Priority
         int  priority = 0;
-        auto it       = request->find("X-Priority");
-        if (it != request->end())
+        auto it       = request.find("X-Priority");
+        if (it != request.end())
         {
             try
             {
@@ -146,7 +160,7 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
         {
             static std::atomic<unsigned int> nonZeroCounter{0};
             unsigned int                     current     = ++nonZeroCounter;
-            const unsigned int               SAMPLE_RATE = 10;
+            constexpr unsigned int           SAMPLE_RATE = 10;
 
             if (current % SAMPLE_RATE == 0)
             {
@@ -157,7 +171,7 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
         }
 
         // Forming a response
-        http::response<http::string_body> response = processRequest(*request);
+        http::response<http::string_body> response = processRequest(request);
 
         auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(response));
 
@@ -165,7 +179,7 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
         asyncSendResponse(socket, responsePtr, std::move(restartAccept));
     };
 
-    http::async_read(*socket, *buffer, *request, std::move(onReadCompleted));
+    http::async_read(*socket, *buffer, *parser, std::move(onReadCompleted));
 }
 
 // Business logic: forming a response
