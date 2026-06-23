@@ -8,6 +8,7 @@ int main()
 
     boost::asio::io_context ioc;
     HttpServer              server(ioc, 8080, numThreads, std::make_unique<ConsoleSink>());
+    server.setLogLevel(LogLevel::INFO);
     server.run();
 
     return 0;

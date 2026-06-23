@@ -10,6 +10,8 @@ const char* logLevelToStr(LogLevel level)
 {
     switch (level)
     {
+        case LogLevel::DEBUG:
+            return "DEBUG";
         case LogLevel::INFO:
             return "INFO";
         case LogLevel::WARNING:
@@ -141,6 +143,8 @@ AsyncLogger::~AsyncLogger()
 
 void AsyncLogger::log(const std::string& message, LogLevel level)
 {
+    if (level < m_minLevel)
+        return;
     m_queue.push(LogMessage(message, level));
 }
 

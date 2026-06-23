@@ -12,6 +12,7 @@
 
 enum class LogLevel
 {
+    DEBUG,
     INFO,
     WARNING,
     ERROR
@@ -90,12 +91,14 @@ public:
     explicit AsyncLogger(std::unique_ptr<LogSink> sink);
     ~AsyncLogger();
 
-    void log(const std::string& message, LogLevel level = LogLevel::INFO);
+    void log(const std::string& message, LogLevel level);
     void start();
     void shutdown();
+    void setMinLevel(LogLevel level) { m_minLevel = level; };
 
 private:
     MessageQueue             m_queue;
     std::unique_ptr<LogSink> m_sink;
     LogConsumer              m_consumer;
+    LogLevel                 m_minLevel = LogLevel::INFO;
 };
