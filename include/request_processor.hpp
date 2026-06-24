@@ -17,19 +17,20 @@ class RequestProcessor
 public:
     RequestProcessor(const Router& router, HttpServer& server, ThreadPool& pool,
                      boost::asio::io_context& ioc);
-    void process(const http::request<http::string_body>& req, int priority,
+    void process(std::shared_ptr<const http::request<http::string_body>>& reqPtr, int priority,
                  std::shared_ptr<tcp::socket> socket, std::function<void()> restartAccept) const;
 
 private:
     static HttpTask::ComputeFn createComputeStrategy();
-    HttpTask::DoneCallback     createDoneCallback(const std::shared_ptr<tcp::socket>&     socket,
-                                                  const http::request<http::string_body>& req,
-                                                  std::function<void()> restartAccept) const;
+    HttpTask::DoneCallback     createDoneCallback(
+        const std::shared_ptr<tcp::socket>&                     socket,
+        std::shared_ptr<const http::request<http::string_body>> reqPtr,
+        std::function<void()>                                   restartAccept) const;
 
-    void sendResponseAsync(const std::shared_ptr<tcp::socket>&     socket,
-                           http::response<http::string_body>       response,
-                           const http::request<http::string_body>& req,
-                           std::function<void()>                   restartAccept) const;
+    void sendResponseAsync(const std::shared_ptr<tcp::socket>&                     socket,
+                           http::response<http::string_body>                       response,
+                           std::shared_ptr<const http::request<http::string_body>> reqPtr,
+                           std::function<void()> restartAccept) const;
 
     const Router&            m_router;
     HttpServer&              m_server;

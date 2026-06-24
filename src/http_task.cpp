@@ -2,9 +2,9 @@
 
 #include "utils.hpp"
 
-HttpTask::HttpTask(const http::request<http::string_body>& request, AsyncLogger& logger,
-                   ComputeFn computeFn, DoneCallback doneCallBack)
-    : m_request(request),
+HttpTask::HttpTask(std::shared_ptr<const http::request<http::string_body>> request,
+                   AsyncLogger& logger, ComputeFn computeFn, DoneCallback doneCallBack)
+    : m_request(std::move(request)),
       m_logger(logger),
       m_computeFn(std::move(computeFn)),
       m_doneCallBack(std::move(doneCallBack))
@@ -23,7 +23,7 @@ void HttpTask::execute()
     };
     try
     {
-        auto response = m_computeFn(m_request);
+        auto response = m_computeFn(*m_request);
         m_doneCallBack(std::move(response));
     }
     catch (std::exception& e)

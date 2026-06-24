@@ -15,14 +15,14 @@ public:
         std::function<http::response<http::string_body>(const http::request<http::string_body>&)>;
     using DoneCallback = std::function<void(http::response<http::string_body>)>;
 
-    HttpTask(const http::request<http::string_body>& request, AsyncLogger& logger,
+    HttpTask(std::shared_ptr<const http::request<http::string_body>> request, AsyncLogger& logger,
              ComputeFn computeFn, DoneCallback doneCallBack);
 
     void execute() override;
 
 private:
-    http::request<http::string_body> m_request;
-    AsyncLogger&                     m_logger;
-    ComputeFn                        m_computeFn;
-    DoneCallback                     m_doneCallBack;
+    std::shared_ptr<const http::request<http::string_body>> m_request;
+    AsyncLogger&                                            m_logger;
+    ComputeFn                                               m_computeFn;
+    DoneCallback                                            m_doneCallBack;
 };
