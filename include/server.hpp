@@ -20,11 +20,12 @@ public:
                         std::unique_ptr<LogSink> sink       = std::make_unique<ConsoleSink>());
     void run();
     void setLogLevel(LogLevel level) { m_logger.setMinLevel(level); }
-    void sendResponse(
-        std::shared_ptr<boost::asio::ip::tcp::socket>                                 socket,
-        std::shared_ptr<http::response<http::string_body>>                            response,
-        std::optional<std::reference_wrapper<const http::request<http::string_body>>> request,
-        std::function<void()> restartAccept);
+    void sendResponse(std::shared_ptr<boost::asio::ip::tcp::socket>      socket,
+                      std::shared_ptr<http::response<http::string_body>> response,
+                      std::optional<http::request<http::string_body>>    request,
+                      std::function<void()>                              restartAccept);
+
+    AsyncLogger& getLogger() { return m_logger; }
 
 private:
     void setup();
@@ -34,10 +35,8 @@ private:
     void handleSession(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
                        std::function<void()>                                restartAccept);
 
-    static bool isKeepAlive(
-        const std::optional<std::reference_wrapper<const http::request<http::string_body>>>&
-                                         request,
-        const boost::system::error_code& ec);
+    static bool isKeepAlive(const std::optional<http::request<http::string_body>>& request,
+                            const boost::system::error_code&                       ec);
 
     boost::asio::io_context&                        m_ioc;
     unsigned short                                  m_port;

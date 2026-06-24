@@ -2,30 +2,36 @@
 
 #include "utils.hpp"
 
-namespace asio  = boost::asio;
-namespace beast = boost::beast;
-
-HttpTask::HttpTask(asio::ip::tcp::socket&& socket, http::request<http::string_body> request,
-                   const Router& router, AsyncLogger& logger)
-    : m_socket(std::move(socket)), m_request(std::move(request)), m_router(router), m_logger(logger)
+HttpTask::HttpTask(const http::request<http::string_body>& request, AsyncLogger& logger,
+                   ComputeFn computeFn, DoneCallback doneCallBack)
+    : m_request(request),
+      m_logger(logger),
+      m_computeFn(std::move(computeFn)),
+      m_doneCallBack(std::move(doneCallBack))
 {
 }
 
 void HttpTask::execute()
 {
+    auto sendError = [this](const std::string& logMsg)
+    {
+        m_logger.log(logMsg, LogLevel::ERROR);
+        http::response<http::string_body> errorRes;
+        utils::makeResponse(errorRes, http::status::internal_server_error,
+                            "500 Internal Server Error");
+        m_doneCallBack(std::move(errorRes));
+    };
     try
     {
-        http::response<http::string_body> res;
-        if (!m_router.route(m_request, res))
-        {
-            utils::sendNotFound(res);
-        }
-
-        http::serializer<false, http::string_body, http::fields> serializer{res};
-        http::write(m_socket, serializer);
+        auto response = m_computeFn(m_request);
+        m_doneCallBack(std::move(response));
     }
     catch (std::exception& e)
     {
-        m_logger.log(std::string("HttpTask error: ") + e.what(), LogLevel::ERROR);
+        sendError(std::string("HttpTask error: ") + e.what());
+    }
+    catch (...)
+    {
+        sendError("HttpTask unknown error");
     }
 }

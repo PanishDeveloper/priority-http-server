@@ -7,12 +7,14 @@
 #include <sstream>
 #include <string>
 
+#include "nlohmann/json.hpp"
+
 namespace http = boost::beast::http;
 
 namespace utils
 {
-inline void make_response(http::response<http::string_body>& res, http::status status,
-                          const std::string& body, const std::string& content_type = "text/plain")
+inline void makeResponse(http::response<http::string_body>& res, http::status status,
+                         const std::string& body, const std::string& content_type = "text/plain")
 {
     res.result(status);
     res.body() = body;
@@ -22,7 +24,7 @@ inline void make_response(http::response<http::string_body>& res, http::status s
 
 inline void sendNotFound(http::response<http::string_body>& res)
 {
-    make_response(res, http::status::not_found, "404 Not Found");
+    makeResponse(res, http::status::not_found, "404 Not Found");
 }
 
 inline std::string formatTimePoint(const std::chrono::system_clock::time_point& tp)
@@ -37,5 +39,23 @@ inline std::string formatTimePoint(const std::chrono::system_clock::time_point& 
     std::ostringstream oss;
     oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     return oss.str();
+}
+
+inline void makeJsonSuccess(http::response<http::string_body>& res, const nlohmann::json& data,
+                            http::status status = http::status::ok)
+{
+    nlohmann::json response;
+    response["status"] = "ok";
+    response["data"]   = data;
+    makeResponse(res, status, response.dump(), "application/json");
+}
+
+inline void makeJsonError(http::response<http::string_body>& res, const std::string& message,
+                          http::status status = http::status::bad_request)
+{
+    nlohmann::json response;
+    response["status"]  = "error";
+    response["message"] = message;
+    makeResponse(res, status, response.dump(), "application/json");
 }
 }  // namespace utils

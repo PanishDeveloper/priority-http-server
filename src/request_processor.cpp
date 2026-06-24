@@ -1,27 +1,108 @@
 #include "request_processor.hpp"
 
+#include <algorithm>
+
 #include "server.hpp"
 #include "utils.hpp"
 
-RequestProcessor::RequestProcessor(const Router& router, HttpServer& server)
-    : m_router(router), m_server(server)
+RequestProcessor::RequestProcessor(const Router& router, HttpServer& server, ThreadPool& pool,
+                                   boost::asio::io_context& ioc)
+    : m_router(router), m_server(server), m_pool(pool), m_ioc(ioc)
 {
 }
 
-void RequestProcessor::process(const http::request<http::string_body>& req, int /*priority*/,
-                               std::shared_ptr<tcp::socket>            socket,
-                               std::function<void()>                   restartAccept) const
+// CPU strategy (computation)
+HttpTask::ComputeFn RequestProcessor::createComputeStrategy()
 {
-    http::response<http::string_body> res;
+    return [](const http::request<http::string_body>& req) -> http::response<http::string_body>
+    {
+        http::response<http::string_body> res;
+        try
+        {
+            auto json = nlohmann::json::parse(req.body());
+            if (!json.is_array())
+            {
+                utils::makeJsonError(res, "Request body must be an array of integers",
+                                     http::status::bad_request);
+                return res;
+            }
 
-    if (!m_router.route(req, res))
-        utils::sendNotFound(res);
+            std::vector<int> numbers = json.get<std::vector<int>>();
 
-    res.set(http::field::server, "PriorityHttpServer/1.0");
-    res.prepare_payload();
+            if (numbers.empty())
+            {
+                utils::makeJsonError(res, "Request body must be an array of integers",
+                                     http::status::bad_request);
+                return res;
+            }
+            std::sort(numbers.begin(), numbers.end());
+            nlohmann::json data;
+            data["sorted"] = numbers;
+            data["size"]   = numbers.size();
+            utils::makeJsonSuccess(res, data);
+        }
+        catch (const std::exception&)
+        {
+            utils::makeJsonError(res, "Invalid JSON", http::status::bad_request);
+        }
+        return res;
+    };
+}
 
-    auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(res));
+// Callback for completing the task
+HttpTask::DoneCallback RequestProcessor::createDoneCallback(
+    const std::shared_ptr<tcp::socket>& socket, const http::request<http::string_body>& req,
+    std::function<void()> restartAccept) const
+{
+    return [this, socket, req, restartAccept = std::move(restartAccept)](
+               http::response<http::string_body> response) mutable
+    { sendResponseAsync(socket, std::move(response), req, std::move(restartAccept)); };
+}
 
-    m_server.sendResponse(std::move(socket), responsePtr, std::make_optional(std::cref(req)),
-                          std::move(restartAccept));
+// Asynchronous response sending via io_context
+void RequestProcessor::sendResponseAsync(const std::shared_ptr<tcp::socket>&     socket,
+                                         http::response<http::string_body>       response,
+                                         const http::request<http::string_body>& req,
+                                         std::function<void()> restartAccept) const
+{
+    boost::asio::post(m_ioc,
+                      [this, socket, response = std::move(response), req,
+                       restartAccept = std::move(restartAccept)]() mutable
+                      {
+                          auto responsePtr = std::make_shared<http::response<http::string_body>>(
+                              std::move(response));
+                          m_server.sendResponse(socket, responsePtr, std::make_optional(req),
+                                                std::move(restartAccept));
+                      });
+}
+
+// The main method of request processing
+void RequestProcessor::process(const http::request<http::string_body>& req, int priority,
+                               std::shared_ptr<tcp::socket> socket,
+                               std::function<void()>        restartAccept) const
+{
+    // CPU strategy for POST /compute
+    if (req.method() == http::verb::post && req.target() == "/compute")
+    {
+        auto computeFn = createComputeStrategy();
+        auto doneCb    = createDoneCallback(socket, req, std::move(restartAccept));
+        auto task      = std::make_unique<HttpTask>(req, m_server.getLogger(), std::move(computeFn),
+                                                    std::move(doneCb));
+        m_pool.submit(std::move(task), priority);
+    }
+    else
+    {
+        // Fast strategy (routing) for all other requests
+        http::response<http::string_body> res;
+        if (!m_router.route(req, res))
+            utils::sendNotFound(res);
+
+        res.set(http::field::server, "PriorityHttpServer/1.0");
+        res.prepare_payload();
+
+        auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(res));
+
+        m_server.sendResponse(std::move(socket), responsePtr, std::make_optional(req),
+                              std::move(restartAccept));
+    }
 }

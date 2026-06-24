@@ -15,6 +15,7 @@ add_executable(prserver_test
         ${PROJECT_SOURCE_DIR}/src/status_handler.cpp
         ${PROJECT_SOURCE_DIR}/src/static_file_handler.cpp
         ${PROJECT_SOURCE_DIR}/src/logger.cpp
+        ${PROJECT_SOURCE_DIR}/src/request_processor.cpp
         thread_pool_test.cpp
         router_test.cpp
         logger_test.cpp

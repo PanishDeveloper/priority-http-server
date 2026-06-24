@@ -4,20 +4,25 @@
 #include <boost/beast/http.hpp>
 
 #include "logger.hpp"
-#include "router.hpp"
 #include "thread_pool.hpp"
+
+namespace http = boost::beast::http;
 
 class HttpTask : public Task
 {
 public:
-    HttpTask(boost::asio::ip::tcp::socket&&                               socket,
-             boost::beast::http::request<boost::beast::http::string_body> request,
-             const Router& router, AsyncLogger& logger);
+    using ComputeFn =
+        std::function<http::response<http::string_body>(const http::request<http::string_body>&)>;
+    using DoneCallback = std::function<void(http::response<http::string_body>)>;
+
+    HttpTask(const http::request<http::string_body>& request, AsyncLogger& logger,
+             ComputeFn computeFn, DoneCallback doneCallBack);
+
     void execute() override;
 
 private:
-    boost::asio::ip::tcp::socket                                 m_socket;
-    boost::beast::http::request<boost::beast::http::string_body> m_request;
-    const Router&                                                m_router;
-    AsyncLogger&                                                 m_logger;
+    http::request<http::string_body> m_request;
+    AsyncLogger&                     m_logger;
+    ComputeFn                        m_computeFn;
+    DoneCallback                     m_doneCallBack;
 };

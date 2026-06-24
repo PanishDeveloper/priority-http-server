@@ -1,5 +1,5 @@
 #include "server.hpp"
-// #include "http_task.hpp"
+#include "http_task.hpp"
 #include <atomic>
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
@@ -23,7 +23,7 @@ HttpServer::HttpServer(asio::io_context& ioc, unsigned short port, size_t numThr
       m_logger(std::move(sink)),
       m_signals(m_ioc, SIGINT, SIGTERM)
 {
-    m_processor = std::make_unique<RequestProcessor>(m_router, *this);
+    m_processor = std::make_unique<RequestProcessor>(m_router, *this, m_pool, m_ioc);
 }
 
 void HttpServer::run()
@@ -97,6 +97,7 @@ void HttpServer::doAccept()
                 doAccept();
                 return;
             }
+            doAccept();
             handleSession(socket, [this]() { doAccept(); });
         });
 }
@@ -122,7 +123,7 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
             {
                 m_logger.log("Request body too large (413)", LogLevel::WARNING);
                 http::response<http::string_body> res;
-                utils::make_response(res, http::status::payload_too_large, "413 Payload too large");
+                utils::makeResponse(res, http::status::payload_too_large, "413 Payload too large");
                 auto resPtr = std::make_shared<http::response<http::string_body>>(std::move(res));
                 sendResponse(socket, resPtr, std::nullopt, std::move(restartAccept));
                 return;
@@ -182,11 +183,10 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
 }
 
 // Asynchronous sending of a response
-void HttpServer::sendResponse(
-    std::shared_ptr<tcp::socket>                                                  socket,
-    std::shared_ptr<http::response<http::string_body>>                            response,
-    std::optional<std::reference_wrapper<const http::request<http::string_body>>> request,
-    std::function<void()>                                                         restartAccept)
+void HttpServer::sendResponse(std::shared_ptr<tcp::socket>                       socket,
+                              std::shared_ptr<http::response<http::string_body>> response,
+                              std::optional<http::request<http::string_body>>    request,
+                              std::function<void()>                              restartAccept)
 {
     http::async_write(*socket, *response,
                       [this, socket = std::move(socket), response = std::move(response), request,
@@ -219,19 +219,14 @@ void HttpServer::sendResponse(
 }
 
 // Determines whether to keep the connection alive after sending a response
-bool HttpServer::isKeepAlive(
-    const std::optional<std::reference_wrapper<const http::request<http::string_body>>>& request,
-    const boost::system::error_code&                                                     ec)
+bool HttpServer::isKeepAlive(const std::optional<http::request<http::string_body>>& request,
+                             const boost::system::error_code&                       ec)
 {
-    // If there is a write error, close the connection
-    if (ec)
+    // If there is a write error or is no request, close the connection
+    if (ec || !request.has_value())
         return false;
 
-    // If there is no request, close the connection
-    if (!request.has_value())
-        return false;
-
-    const auto& req = request->get();
+    const auto& req = request.value();
     auto        it  = req.find(http::field::connection);
 
     // If the Connection header is absent, keep-alive by default (HTTP/1.1)

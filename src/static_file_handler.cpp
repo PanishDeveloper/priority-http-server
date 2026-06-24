@@ -98,5 +98,5 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req,
     std::string mimeType  = getMimeType(extension);
 
     // 9. Answer
-    utils::make_response(res, http::status::ok, content, mimeType);
+    utils::makeResponse(res, http::status::ok, content, mimeType);
 }

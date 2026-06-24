@@ -34,9 +34,10 @@ private:
     struct Compare
     {
         static constexpr std::chrono::seconds AGING_THRESHOLD{1};
+
         bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
-            auto now     = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
             bool lhsAged = (now - lhs.added) > AGING_THRESHOLD;
             bool rhsAged = (now - rhs.added) > AGING_THRESHOLD;
 
