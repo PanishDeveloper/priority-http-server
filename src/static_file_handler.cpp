@@ -7,7 +7,8 @@
 
 namespace fs = std::filesystem;
 
-StaticFileHandler::StaticFileHandler(const std::string& rootPath) : m_rootPath(rootPath)
+StaticFileHandler::StaticFileHandler(const std::string& rootPath, size_t maxFileSize)
+    : m_rootPath(rootPath), m_maxFileSize(maxFileSize)
 {
     std::error_code ec;
     m_rootCanonical = fs::weakly_canonical(m_rootPath, ec);
@@ -82,7 +83,21 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req,
         return;
     }
 
-    // 7. Reading a file
+    // 7. Checking the file size
+    size_t fileSize = static_cast<size_t>(fs::file_size(fullPath, ec));
+    if (ec)
+    {
+        utils::sendNotFound(res);
+        return;
+    }
+    if (fileSize > m_maxFileSize)
+    {
+        utils::makeResponse(res, http::status::payload_too_large, "413 Payload Too Large",
+                            "text/plain");
+        return;
+    }
+
+    // 8. Reading a file
     std::ifstream file(fullPath, std::ios::binary);
     if (!file.is_open())
     {
@@ -93,10 +108,10 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req,
     oss << file.rdbuf();
     std::string content = oss.str();
 
-    // 8. MIME - type
+    // 9. MIME - type
     std::string extension = fullPath.extension().string();
     std::string mimeType  = getMimeType(extension);
 
-    // 9. Answer
+    // 10. Answer
     utils::makeResponse(res, http::status::ok, content, mimeType);
 }

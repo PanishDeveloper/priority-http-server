@@ -40,8 +40,10 @@ void HttpServer::setup()
     m_logger.log("Server starting...", LogLevel::INFO);
 
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
-    m_router.addRoute(http::verb::get, "/static/", std::make_unique<StaticFileHandler>("static"));
-    m_router.addRoute(http::verb::head, "/static/", std::make_unique<StaticFileHandler>("static"));
+    m_router.addRoute(http::verb::get, "/static/",
+                      std::make_unique<StaticFileHandler>("static", 10 * 1024 * 1024));
+    m_router.addRoute(http::verb::head, "/static/",
+                      std::make_unique<StaticFileHandler>("static", 10 * 1024 * 1024));
 
     m_pool.start();
 
