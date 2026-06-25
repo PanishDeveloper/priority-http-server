@@ -98,7 +98,7 @@ void HttpServer::doAccept()
                 return;
             }
             doAccept();
-            handleSession(socket, [this]() { doAccept(); });
+            handleSession(socket, []() {});
         });
 }
 

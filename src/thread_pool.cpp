@@ -1,6 +1,7 @@
 #include "thread_pool.hpp"
 
 #include <iostream>
+#include <limits>
 
 // Realization of methods TaskQueue
 void TaskQueue::push(std::unique_ptr<Task> task, int priority)
@@ -8,7 +9,7 @@ void TaskQueue::push(std::unique_ptr<Task> task, int priority)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_queue.push_back(PrioritizedTask{priority, m_order++, std::move(task),
-                                          std::chrono::steady_clock::now()});
+                                          std::chrono::steady_clock::now(), priority});
         std::push_heap(m_queue.begin(), m_queue.end(), Compare{});
     }
     m_cv.notify_one();
@@ -21,6 +22,7 @@ std::unique_ptr<Task> TaskQueue::pop()
 
     if (!m_queue.empty())
     {
+        applyAging();
         std::pop_heap(m_queue.begin(), m_queue.end(), Compare{});
         auto task = std::move(m_queue.back().task);
         m_queue.pop_back();
@@ -43,6 +45,26 @@ size_t TaskQueue::size() const noexcept
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_queue.size();
+}
+
+void TaskQueue::applyAging()
+{
+    auto now     = std::chrono::steady_clock::now();
+    bool anyAged = false;
+
+    for (auto& item : m_queue)
+    {
+        if ((now - item.added) > AGING_THRESHOLD)
+        {
+            item.effectivePriority = std::numeric_limits<int>::max();
+            anyAged                = true;
+        }
+    }
+
+    if (anyAged)
+    {
+        std::make_heap(m_queue.begin(), m_queue.end(), Compare{});
+    }
 }
 
 // Realization of methods WorkerThread

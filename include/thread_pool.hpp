@@ -29,39 +29,26 @@ private:
         size_t                                order;
         std::unique_ptr<Task>                 task;
         std::chrono::steady_clock::time_point added;
+        int                                   effectivePriority;
     };
 
     struct Compare
     {
-        static constexpr std::chrono::seconds AGING_THRESHOLD{1};
-
         bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
-            auto now     = std::chrono::steady_clock::now();
-            bool lhsAged = (now - lhs.added) > AGING_THRESHOLD;
-            bool rhsAged = (now - rhs.added) > AGING_THRESHOLD;
-
-            if (lhsAged && rhsAged)
-            {
-                if (lhs.priority != rhs.priority)
-                    return lhs.priority < rhs.priority;
-                return lhs.order > rhs.order;
-            }
-
-            if (lhsAged != rhsAged)
-                return !lhsAged;
-
-            if (lhs.priority != rhs.priority)
-                return lhs.priority < rhs.priority;
+            if (lhs.effectivePriority != rhs.effectivePriority )
+                return lhs.effectivePriority  < rhs.effectivePriority ;
             return lhs.order > rhs.order;
         }
     };
 
-    std::vector<PrioritizedTask> m_queue;
-    mutable std::mutex           m_mutex;
-    std::condition_variable      m_cv;
-    bool                         m_done  = false;
-    size_t                       m_order = 0;
+    std::vector<PrioritizedTask>          m_queue;
+    mutable std::mutex                    m_mutex;
+    std::condition_variable               m_cv;
+    bool                                  m_done  = false;
+    size_t                                m_order = 0;
+    static constexpr std::chrono::seconds AGING_THRESHOLD{1};
+    void                                  applyAging();
 };
 
 class WorkerThread
