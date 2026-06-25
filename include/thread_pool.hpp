@@ -17,7 +17,9 @@ public:
 class TaskQueue
 {
 public:
-    void                                push(std::unique_ptr<Task> task, int priority = 0);
+    explicit TaskQueue(size_t maxQueueSize = 1000);
+
+    bool                                push(std::unique_ptr<Task> task, int priority = 0);
     [[nodiscard]] std::unique_ptr<Task> pop();
     void                                shutdown();
     [[nodiscard]] size_t                size() const noexcept;
@@ -36,8 +38,8 @@ private:
     {
         bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
-            if (lhs.effectivePriority != rhs.effectivePriority )
-                return lhs.effectivePriority  < rhs.effectivePriority ;
+            if (lhs.effectivePriority != rhs.effectivePriority)
+                return lhs.effectivePriority < rhs.effectivePriority;
             return lhs.order > rhs.order;
         }
     };
@@ -47,6 +49,7 @@ private:
     std::condition_variable               m_cv;
     bool                                  m_done  = false;
     size_t                                m_order = 0;
+    size_t                                m_maxQueueSize;
     static constexpr std::chrono::seconds AGING_THRESHOLD{1};
     void                                  applyAging();
 };
@@ -70,10 +73,11 @@ private:
 class ThreadPool
 {
 public:
-    explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
+    explicit ThreadPool(size_t numThreads   = std::thread::hardware_concurrency(),
+                        size_t maxQueueSize = 1000);
     ~ThreadPool();
 
-    void                 submit(std::unique_ptr<Task> task, int priority = 0);
+    bool                 submit(std::unique_ptr<Task> task, int priority = 0);
     void                 start();
     void                 shutdown() noexcept;
     [[nodiscard]] size_t threadCount() const { return m_workers.size(); }

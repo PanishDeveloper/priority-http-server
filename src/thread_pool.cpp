@@ -4,15 +4,22 @@
 #include <limits>
 
 // Realization of methods TaskQueue
-void TaskQueue::push(std::unique_ptr<Task> task, int priority)
+TaskQueue::TaskQueue(size_t maxQueueSize) : m_maxQueueSize(maxQueueSize) {}
+
+bool TaskQueue::push(std::unique_ptr<Task> task, int priority)
 {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+
+        if (m_queue.size() >= m_maxQueueSize)
+            return false;
+
         m_queue.push_back(PrioritizedTask{priority, m_order++, std::move(task),
                                           std::chrono::steady_clock::now(), priority});
         std::push_heap(m_queue.begin(), m_queue.end(), Compare{});
     }
     m_cv.notify_one();
+    return true;
 }
 
 std::unique_ptr<Task> TaskQueue::pop()
@@ -98,7 +105,7 @@ void WorkerThread::join()
 }
 
 // Realization of methods ThreadPool
-ThreadPool::ThreadPool(size_t numThreads)
+ThreadPool::ThreadPool(size_t numThreads, size_t maxQueueSize) : m_queue(maxQueueSize)
 {
     if (numThreads == 0)
         numThreads = 1;
@@ -120,9 +127,9 @@ ThreadPool::~ThreadPool()
     shutdown();
 }
 
-void ThreadPool::submit(std::unique_ptr<Task> task, int priority)
+bool ThreadPool::submit(std::unique_ptr<Task> task, int priority)
 {
-    m_queue.push(std::move(task), priority);
+    return m_queue.push(std::move(task), priority);
 }
 
 void ThreadPool::start()

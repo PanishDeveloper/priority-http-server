@@ -89,7 +89,13 @@ void RequestProcessor::process(std::shared_ptr<const http::request<http::string_
         auto doneCb    = createDoneCallback(socket, reqPtr, std::move(restartAccept));
         auto task = std::make_unique<HttpTask>(reqPtr, m_server.getLogger(), std::move(computeFn),
                                                std::move(doneCb));
-        m_pool.submit(std::move(task), priority);
+        if (!m_pool.submit(std::move(task), priority))
+        {
+            http::response<http::string_body> errorRes;
+            utils::makeResponse(errorRes, http::status::service_unavailable,
+                                "503 Server overloaded", "text/plain");
+            sendResponseAsync(socket, std::move(errorRes), nullptr, std::move(restartAccept));
+        }
     }
     else
     {
