@@ -34,10 +34,10 @@ struct LogMessage
 class MessageQueue
 {
 public:
-    void                      push(const LogMessage& msg);
-    std::optional<LogMessage> pop();
-    void                      shutdown();
-    [[nodiscard]] size_t      size() const;
+    void                                    push(const LogMessage& msg);
+    [[nodiscard]] std::optional<LogMessage> pop();
+    void                                    shutdown();
+    [[nodiscard]] size_t                    size() const noexcept;
 
 private:
     std::queue<LogMessage>  m_queue;

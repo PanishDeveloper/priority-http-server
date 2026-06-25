@@ -221,7 +221,7 @@ void HttpServer::sendResponse(std::shared_ptr<tcp::socket>                      
 
 // Determines whether to keep the connection alive after sending a response
 bool HttpServer::isKeepAlive(const std::shared_ptr<const http::request<http::string_body>>& request,
-                             const boost::system::error_code&                               ec)
+                             const boost::system::error_code& ec) noexcept
 {
     // If there is a write error or is no request, close the connection
     if (ec || !request)

@@ -6,7 +6,7 @@
 
 namespace http = boost::beast::http;
 
-StatusHandler::StatusHandler(const ThreadPool& pool) : m_pool(pool) {}
+StatusHandler::StatusHandler(const ThreadPool& pool) noexcept : m_pool(pool) {}
 
 void StatusHandler::handle(const http::request<http::string_body>&,
                            http::response<http::string_body>& res) const

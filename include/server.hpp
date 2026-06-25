@@ -19,13 +19,13 @@ public:
                         size_t                   numThreads = std::thread::hardware_concurrency(),
                         std::unique_ptr<LogSink> sink       = std::make_unique<ConsoleSink>());
     void run();
-    void setLogLevel(LogLevel level) { m_logger.setMinLevel(level); }
+    void setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
     void sendResponse(std::shared_ptr<boost::asio::ip::tcp::socket>           socket,
                       std::shared_ptr<http::response<http::string_body>>      response,
                       std::shared_ptr<const http::request<http::string_body>> request,
                       std::function<void()>                                   restartAccept);
 
-    AsyncLogger& getLogger() { return m_logger; }
+    [[nodiscard]] AsyncLogger& getLogger() { return m_logger; }
 
 private:
     void setup();
@@ -35,8 +35,9 @@ private:
     void handleSession(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
                        std::function<void()>                                restartAccept);
 
-    static bool isKeepAlive(const std::shared_ptr<const http::request<http::string_body>>& request,
-                            const boost::system::error_code&                               ec);
+    [[nodiscard]] static bool isKeepAlive(
+        const std::shared_ptr<const http::request<http::string_body>>& request,
+        const boost::system::error_code&                               ec) noexcept;
 
     boost::asio::io_context&                        m_ioc;
     unsigned short                                  m_port;

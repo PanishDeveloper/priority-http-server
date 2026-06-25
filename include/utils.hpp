@@ -27,7 +27,7 @@ inline void sendNotFound(http::response<http::string_body>& res)
     makeResponse(res, http::status::not_found, "404 Not Found");
 }
 
-inline std::string formatTimePoint(const std::chrono::system_clock::time_point& tp)
+[[nodiscard]] inline std::string formatTimePoint(const std::chrono::system_clock::time_point& tp)
 {
     auto    now = std::chrono::system_clock::to_time_t(tp);
     std::tm tm{};

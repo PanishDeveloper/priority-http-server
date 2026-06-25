@@ -17,10 +17,10 @@ public:
 class TaskQueue
 {
 public:
-    void                  push(std::unique_ptr<Task> task, int priority = 0);
-    std::unique_ptr<Task> pop();
-    void                  shutdown();
-    [[nodiscard]] size_t  size() const;
+    void                                push(std::unique_ptr<Task> task, int priority = 0);
+    [[nodiscard]] std::unique_ptr<Task> pop();
+    void                                shutdown();
+    [[nodiscard]] size_t                size() const noexcept;
 
 private:
     struct PrioritizedTask
@@ -37,7 +37,7 @@ private:
 
         bool operator()(const PrioritizedTask& lhs, const PrioritizedTask& rhs) const
         {
-            auto now = std::chrono::steady_clock::now();
+            auto now     = std::chrono::steady_clock::now();
             bool lhsAged = (now - lhs.added) > AGING_THRESHOLD;
             bool rhsAged = (now - rhs.added) > AGING_THRESHOLD;
 
@@ -67,9 +67,9 @@ private:
 class WorkerThread
 {
 public:
-    explicit WorkerThread(TaskQueue& queue);
+    explicit WorkerThread(TaskQueue& queue) noexcept;
     ~WorkerThread();
-    WorkerThread(WorkerThread&&)                     = default;
+    WorkerThread(WorkerThread&&) noexcept            = default;
     WorkerThread& operator=(WorkerThread&&) noexcept = default;
 
     void start();
@@ -88,7 +88,7 @@ public:
 
     void                 submit(std::unique_ptr<Task> task, int priority = 0);
     void                 start();
-    void                 shutdown();
+    void                 shutdown() noexcept;
     [[nodiscard]] size_t threadCount() const { return m_workers.size(); }
     [[nodiscard]] size_t pendingTasks() const { return m_queue.size(); }
 

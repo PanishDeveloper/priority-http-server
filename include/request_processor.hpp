@@ -21,8 +21,8 @@ public:
                  std::shared_ptr<tcp::socket> socket, std::function<void()> restartAccept) const;
 
 private:
-    static HttpTask::ComputeFn createComputeStrategy();
-    HttpTask::DoneCallback     createDoneCallback(
+    static HttpTask::ComputeFn           createComputeStrategy();
+    [[nodiscard]] HttpTask::DoneCallback createDoneCallback(
         const std::shared_ptr<tcp::socket>&                     socket,
         std::shared_ptr<const http::request<http::string_body>> reqPtr,
         std::function<void()>                                   restartAccept) const;

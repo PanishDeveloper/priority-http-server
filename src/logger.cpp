@@ -66,7 +66,7 @@ void MessageQueue::shutdown()
     m_cv.notify_all();
 }
 
-size_t MessageQueue::size() const
+size_t MessageQueue::size() const noexcept
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_queue.size();

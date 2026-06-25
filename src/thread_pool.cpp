@@ -39,14 +39,14 @@ void TaskQueue::shutdown()
     m_cv.notify_all();
 }
 
-size_t TaskQueue::size() const
+size_t TaskQueue::size() const noexcept
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_queue.size();
 }
 
 // Realization of methods WorkerThread
-WorkerThread::WorkerThread(TaskQueue& queue) : m_queue(&queue) {}
+WorkerThread::WorkerThread(TaskQueue& queue) noexcept : m_queue(&queue) {}
 
 WorkerThread::~WorkerThread()
 {
@@ -108,7 +108,7 @@ void ThreadPool::start()
     for (auto& w : m_workers) w.start();
 }
 
-void ThreadPool::shutdown()
+void ThreadPool::shutdown() noexcept
 {
     m_queue.shutdown();
     for (auto& w : m_workers) w.join();
