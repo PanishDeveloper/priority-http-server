@@ -4,7 +4,8 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/signal_set.hpp>
-#include <functional>
+#include <shared_mutex>
+#include <unordered_set>
 
 #include "logger.hpp"
 #include "request_processor.hpp"
@@ -13,19 +14,27 @@
 
 namespace http = boost::beast::http;
 
+class Session;  // forward declaration
+
 class HttpServer
 {
 public:
     explicit HttpServer(boost::asio::io_context& ioc, unsigned short port,
                         size_t                   numThreads = std::thread::hardware_concurrency(),
                         std::unique_ptr<LogSink> sink       = std::make_unique<ConsoleSink>());
-    void run();
-    void setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
-    void sendResponse(std::shared_ptr<boost::asio::ip::tcp::socket>           socket,
-                      std::shared_ptr<http::response<http::string_body>>      response,
-                      std::shared_ptr<const http::request<http::string_body>> request,
-                      std::function<void()>                                   restartAccept);
+    ~HttpServer();
 
+    void        run();
+    void        setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
+    static void sendResponse(
+        const std::shared_ptr<Session>&                                session,
+        std::shared_ptr<http::response<http::string_body>>             response,
+        const std::shared_ptr<const http::request<http::string_body>>& request);
+    // Method for ending the session
+    void                       endSession(const std::shared_ptr<Session>& session);
+    void                       incrementSessions() { ++m_activeSessions; }
+    size_t                     getActiveSessions() const { return m_activeSessions.load(); }
+    bool                       isDraining() const noexcept { return m_draining.load(); }
     [[nodiscard]] AsyncLogger& getLogger() { return m_logger; }
 
 private:
@@ -33,10 +42,7 @@ private:
     void startAcceptorLoop();
     void shutdown();
     void doAccept();
-    void handleSession(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
-                       std::function<void()> restartAccept, bool isNewSession = true);
     void checkDrainComplete();
-    void endSession(std::function<void()> restartAccept);
 
     [[nodiscard]] static bool isKeepAlive(
         const std::shared_ptr<const http::request<http::string_body>>& request,
@@ -51,6 +57,8 @@ private:
     std::vector<std::thread>                        m_ioThreads;
     std::unique_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
     std::unique_ptr<RequestProcessor>               m_processor;
+    std::unordered_set<std::shared_ptr<Session>>    m_sessions;
+    mutable std::shared_mutex                       m_sessionsMutex;
     std::atomic<bool>                               m_draining{false};
     std::atomic<size_t>                             m_activeSessions{0};
 };

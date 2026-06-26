@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "server.hpp"
+#include "session.hpp"
 #include "utils.hpp"
 
 RequestProcessor::RequestProcessor(const Router& router, HttpServer& server, ThreadPool& pool,
@@ -36,6 +37,7 @@ HttpTask::ComputeFn RequestProcessor::createComputeStrategy()
                 return res;
             }
             std::sort(numbers.begin(), numbers.end());
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             nlohmann::json data;
             data["sorted"] = numbers;
             data["size"]   = numbers.size();
@@ -51,42 +53,38 @@ HttpTask::ComputeFn RequestProcessor::createComputeStrategy()
 
 // Callback for completing the task
 HttpTask::DoneCallback RequestProcessor::createDoneCallback(
-    const std::shared_ptr<tcp::socket>&                     socket,
-    std::shared_ptr<const http::request<http::string_body>> reqPtr,
-    std::function<void()>                                   restartAccept) const
+    const std::shared_ptr<Session>&                         session,
+    std::shared_ptr<const http::request<http::string_body>> reqPtr) const
 {
-    return [this, socket, reqPtr = std::move(reqPtr), restartAccept = std::move(restartAccept)](
-               http::response<http::string_body> response) mutable
-    { sendResponseAsync(socket, std::move(response), reqPtr, std::move(restartAccept)); };
+    return [this, session,
+            reqPtr = std::move(reqPtr)](http::response<http::string_body> response) mutable
+    { sendResponseAsync(session, std::move(response), reqPtr); };
 }
 
 // Asynchronous response sending via io_context
 void RequestProcessor::sendResponseAsync(
-    const std::shared_ptr<tcp::socket>& socket, http::response<http::string_body> response,
-    std::shared_ptr<const http::request<http::string_body>> reqPtr,
-    std::function<void()>                                   restartAccept) const
+    const std::shared_ptr<Session>& session, http::response<http::string_body> response,
+    std::shared_ptr<const http::request<http::string_body>> reqPtr) const
 {
     boost::asio::post(
         m_ioc,
-        [this, socket, response = std::move(response), reqPtr = std::move(reqPtr),
-         restartAccept = std::move(restartAccept)]() mutable
+        [session, response = std::move(response), reqPtr = std::move(reqPtr)]() mutable
         {
             auto responsePtr =
                 std::make_shared<http::response<http::string_body>>(std::move(response));
-            m_server.sendResponse(socket, responsePtr, reqPtr, std::move(restartAccept));
+            HttpServer::sendResponse(session, responsePtr, reqPtr);
         });
 }
 
 // The main method of request processing
 void RequestProcessor::process(std::shared_ptr<const http::request<http::string_body>>& reqPtr,
-                               int priority, std::shared_ptr<tcp::socket> socket,
-                               std::function<void()> restartAccept) const
+                               int priority, const std::shared_ptr<Session>& session) const
 {
     // CPU strategy for POST /compute
     if (reqPtr->method() == http::verb::post && reqPtr->target() == "/compute")
     {
         auto computeFn = createComputeStrategy();
-        auto doneCb    = createDoneCallback(socket, reqPtr, std::move(restartAccept));
+        auto doneCb    = createDoneCallback(session, reqPtr);
         auto task = std::make_unique<HttpTask>(reqPtr, m_server.getLogger(), std::move(computeFn),
                                                std::move(doneCb));
         if (!m_pool.submit(std::move(task), priority))
@@ -94,7 +92,7 @@ void RequestProcessor::process(std::shared_ptr<const http::request<http::string_
             http::response<http::string_body> errorRes;
             utils::makeResponse(errorRes, http::status::service_unavailable,
                                 "503 Server overloaded", "text/plain");
-            sendResponseAsync(socket, std::move(errorRes), nullptr, std::move(restartAccept));
+            sendResponseAsync(session, std::move(errorRes), nullptr);
         }
     }
     else
@@ -109,6 +107,6 @@ void RequestProcessor::process(std::shared_ptr<const http::request<http::string_
 
         auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(res));
 
-        m_server.sendResponse(std::move(socket), responsePtr, reqPtr, std::move(restartAccept));
+        HttpServer::sendResponse(session, responsePtr, reqPtr);
     }
 }

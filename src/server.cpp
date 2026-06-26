@@ -6,6 +6,7 @@
 #include <boost/system/errc.hpp>
 #include <memory>
 
+#include "session.hpp"
 #include "static_file_handler.hpp"
 #include "status_handler.hpp"
 #include "utils.hpp"
@@ -24,6 +25,11 @@ HttpServer::HttpServer(asio::io_context& ioc, unsigned short port, size_t numThr
       m_signals(m_ioc, SIGINT, SIGTERM)
 {
     m_processor = std::make_unique<RequestProcessor>(m_router, *this, m_pool, m_ioc);
+}
+
+HttpServer::~HttpServer()
+{
+    shutdown();
 }
 
 void HttpServer::run()
@@ -56,6 +62,13 @@ void HttpServer::setup()
                              LogLevel::INFO);
                 m_draining = true;
 
+                // When the signal is given, we close all sessions
+                std::vector<std::shared_ptr<Session>> sessionsToClose;
+                {
+                    std::unique_lock lock(m_sessionsMutex);
+                    sessionsToClose.assign(m_sessions.begin(), m_sessions.end());
+                }
+                for (auto& session : sessionsToClose) session->close();
                 checkDrainComplete();
             }
         });
@@ -102,159 +115,50 @@ void HttpServer::doAccept()
                 return;
             }
             doAccept();
-            handleSession(socket, []() {}, true);
+
+            // Create a session and add it to the storage
+            auto session = std::make_shared<Session>(std::move(*socket), m_ioc, *this, *m_processor,
+                                                     m_logger, std::chrono::seconds(30));
+            {
+                std::unique_lock lock(m_sessionsMutex);
+                m_sessions.insert(session);
+            }
+            session->start();
         });
 }
 
-void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
-                               std::function<void()> restartAccept, bool isNewSession)
+// Asynchronous sending of a response
+void HttpServer::sendResponse(
+    const std::shared_ptr<Session>&                                session,
+    std::shared_ptr<http::response<http::string_body>>             response,
+    const std::shared_ptr<const http::request<http::string_body>>& request)
 {
-    if (isNewSession)
-    {
-        ++m_activeSessions;
-        m_logger.log("Session started. Active: " + std::to_string(m_activeSessions.load()),
-                     LogLevel::DEBUG);
-    }
-
-    auto buffer = std::make_shared<beast::flat_buffer>();
-    auto parser = std::make_shared<http::request_parser<http::string_body>>();
-
-    // Set the body limit (10 MB)
-    parser->body_limit(10 * 1024 * 1024);
-
-    auto onReadCompleted = [this, socket, buffer, parser, restartAccept = std::move(restartAccept)](
-                               const boost::system::error_code& ec, std::size_t) mutable
-    {
-        (void)buffer;
-
-        // Handling of reading errors
-        if (ec)
-        {
-            if (ec == http::error::body_limit)
-            {
-                m_logger.log("Request body too large (413)", LogLevel::WARNING);
-                http::response<http::string_body> res;
-                utils::makeResponse(res, http::status::payload_too_large, "413 Payload too large");
-                auto resPtr = std::make_shared<http::response<http::string_body>>(std::move(res));
-                sendResponse(socket, resPtr, nullptr, std::move(restartAccept));
-                return;
-            }
-            if (ec == http::error::end_of_stream || ec == asio::error::eof)
-            {
-                m_logger.log("Connection closed by client", LogLevel::INFO);
-            }
-            else if (ec == asio::error::connection_reset)
-            {
-                m_logger.log("Connection reset by client", LogLevel::DEBUG);
-            }
-            else
-            {
-                m_logger.log(std::string("Client request error: ") + ec.message(), LogLevel::ERROR);
-            }
-
-            // Closing the session
-            endSession(std::move(restartAccept));
-            return;
-        }
-
-        const auto& request = parser->get();
-
-        // Extracting Priority
-        int  priority = 0;
-        auto it       = request.find("X-Priority");
-        if (it != request.end())
-        {
-            try
-            {
-                priority = std::stoi(std::string(it->value()));
-            }
-            catch (...)
-            {
-                m_logger.log("Invalid priority header, ignoring", LogLevel::WARNING);
-            }
-        }
-
-        // Sampling priority logging
-        if (priority != 0)
-        {
-            static std::atomic<unsigned int> nonZeroCounter{0};
-            unsigned int                     current     = ++nonZeroCounter;
-            constexpr unsigned int           SAMPLE_RATE = 10;
-
-            if (current % SAMPLE_RATE == 0)
-            {
-                m_logger.log("Request priority: " + std::to_string(priority) +
-                                 " (sampled, total non-zero=" + std::to_string(current) + ")",
-                             LogLevel::INFO);
-            }
-        }
-
-        auto reqPtr = std::make_shared<const http::request<http::string_body>>(request);
-        m_processor->process(reqPtr, priority, socket, std::move(restartAccept));
-    };
-
-    http::async_read(*socket, *buffer, *parser, std::move(onReadCompleted));
+    // Determining whether to keep the connection open
+    bool keepAlive = isKeepAlive(request, boost::system::error_code());
+    session->sendResponse(std::move(response), keepAlive);
 }
 
-// Asynchronous sending of a response
-void HttpServer::sendResponse(std::shared_ptr<tcp::socket>                            socket,
-                              std::shared_ptr<http::response<http::string_body>>      response,
-                              std::shared_ptr<const http::request<http::string_body>> request,
-                              std::function<void()>                                   restartAccept)
+void HttpServer::endSession(const std::shared_ptr<Session>& session)
 {
-    http::async_write(*socket, *response,
-                      [this, socket = std::move(socket), response = std::move(response),
-                       request = std::move(request), restartAccept = std::move(restartAccept)](
-                          const boost::system::error_code& ec, std::size_t) mutable
-                      {
-                          (void)socket;
-                          (void)response;
-
-                          if (ec)
-                          {
-                              m_logger.log(std::string("Write error: ") + ec.message(),
-                                           LogLevel::ERROR);
-
-                              // Closing the session
-                              endSession(std::move(restartAccept));
-                              return;
-                          }
-
-                          // Determining whether to keep the connection
-                          if (!m_draining && isKeepAlive(request, ec))
-                          {
-                              m_logger.log("Keep-Alive: continue", LogLevel::DEBUG);
-                              handleSession(socket, std::move(restartAccept), false);
-                          }
-                          else
-                          {
-                              if (m_draining)
-                                  m_logger.log("Draining: closing connection", LogLevel::INFO);
-                              else
-                                  m_logger.log("Connection closed", LogLevel::INFO);
-
-                              endSession(std::move(restartAccept));
-                          }
-                      });
+    // Deleting it from the storage
+    {
+        std::unique_lock lock(m_sessionsMutex);
+        m_sessions.erase(session);
+    }
+    --m_activeSessions;
+    m_logger.log("Session ended. Active: " + std::to_string(m_activeSessions.load()),
+                 LogLevel::DEBUG);
+    if (m_draining)
+        checkDrainComplete();
 }
 
 void HttpServer::checkDrainComplete()
 {
-    if (m_activeSessions == 0)
+    if (m_draining && m_activeSessions == 0)
     {
         m_logger.log("All sessions finished, stopping I/O", LogLevel::INFO);
         m_ioc.stop();
     }
-}
-
-void HttpServer::endSession(std::function<void()> restartAccept)  // NOLINT
-{
-    --m_activeSessions;
-    m_logger.log("Session ended. Active: " + std::to_string(m_activeSessions.load()),
-                 LogLevel::DEBUG);
-    restartAccept();
-    if (m_draining)
-        checkDrainComplete();
 }
 
 // Determines whether to keep the connection alive after sending a response
@@ -281,6 +185,16 @@ bool HttpServer::isKeepAlive(const std::shared_ptr<const http::request<http::str
 
 void HttpServer::shutdown()
 {
+    m_draining = true;
+    {
+        std::vector<std::shared_ptr<Session>> sessionsToClose;
+        {
+            std::unique_lock lock(m_sessionsMutex);
+            sessionsToClose.assign(m_sessions.begin(), m_sessions.end());
+        }
+        for (auto& session : sessionsToClose) session->close();
+    }
+
     for (auto& th : m_ioThreads)
         if (th.joinable())
             th.join();

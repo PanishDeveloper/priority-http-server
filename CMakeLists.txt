@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Boost REQUIRED COMPONENTS thread OPTIONAL_COMPONENTS system)
+find_package(Boost REQUIRED COMPONENTS thread)
 
 include(FetchContent)
 
@@ -28,6 +28,7 @@ add_executable(prserver
         src/static_file_handler.cpp
         src/logger.cpp
         src/request_processor.cpp
+        src/session.cpp
 )
 
 target_include_directories(prserver PUBLIC include)
@@ -51,4 +52,15 @@ if(Boost_VERSION VERSION_LESS 1.89.0)
     target_link_libraries(prserver PRIVATE Boost::system Boost::thread)
 else()
     target_link_libraries(prserver PRIVATE Boost::thread)
+endif()
+
+
+option(ENABLE_SANITIZERS "Enable Address and Thread sanitizers" OFF)
+
+if(ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # ThreadSanitizer (включим отдельно, раскомментировав строки ниже)
+        target_compile_options(prserver PRIVATE -fsanitize=thread -fno-omit-frame-pointer)
+        target_link_options(prserver PRIVATE -fsanitize=thread)
+    endif()
 endif()
