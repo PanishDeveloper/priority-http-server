@@ -54,7 +54,9 @@ void HttpServer::setup()
             {
                 m_logger.log("Shutdown signal received (SIG " + std::to_string(signal) + ")",
                              LogLevel::INFO);
-                m_ioc.stop();
+                m_draining = true;
+
+                checkDrainComplete();
             }
         });
 }
@@ -79,7 +81,7 @@ void HttpServer::startAcceptorLoop()
 
 void HttpServer::doAccept()
 {
-    if (m_ioc.stopped())
+    if (m_ioc.stopped() || m_draining)
         return;
 
     auto socket = std::make_shared<tcp::socket>(m_ioc);
@@ -100,13 +102,20 @@ void HttpServer::doAccept()
                 return;
             }
             doAccept();
-            handleSession(socket, []() {});
+            handleSession(socket, []() {}, true);
         });
 }
 
 void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
-                               std::function<void()>               restartAccept)
+                               std::function<void()> restartAccept, bool isNewSession)
 {
+    if (isNewSession)
+    {
+        ++m_activeSessions;
+        m_logger.log("Session started. Active: " + std::to_string(m_activeSessions.load()),
+                     LogLevel::DEBUG);
+    }
+
     auto buffer = std::make_shared<beast::flat_buffer>();
     auto parser = std::make_shared<http::request_parser<http::string_body>>();
 
@@ -142,7 +151,9 @@ void HttpServer::handleSession(const std::shared_ptr<tcp::socket>& socket,
             {
                 m_logger.log(std::string("Client request error: ") + ec.message(), LogLevel::ERROR);
             }
-            restartAccept();
+
+            // Closing the session
+            endSession(std::move(restartAccept));
             return;
         }
 
@@ -203,22 +214,47 @@ void HttpServer::sendResponse(std::shared_ptr<tcp::socket>                      
                           {
                               m_logger.log(std::string("Write error: ") + ec.message(),
                                            LogLevel::ERROR);
-                              restartAccept();
+
+                              // Closing the session
+                              endSession(std::move(restartAccept));
                               return;
                           }
 
                           // Determining whether to keep the connection
-                          if (isKeepAlive(request, ec))
+                          if (!m_draining && isKeepAlive(request, ec))
                           {
                               m_logger.log("Keep-Alive: continue", LogLevel::DEBUG);
-                              handleSession(socket, restartAccept);
+                              handleSession(socket, std::move(restartAccept), false);
                           }
                           else
                           {
-                              m_logger.log("Connection closed", LogLevel::INFO);
-                              restartAccept();
+                              if (m_draining)
+                                  m_logger.log("Draining: closing connection", LogLevel::INFO);
+                              else
+                                  m_logger.log("Connection closed", LogLevel::INFO);
+
+                              endSession(std::move(restartAccept));
                           }
                       });
+}
+
+void HttpServer::checkDrainComplete()
+{
+    if (m_activeSessions == 0)
+    {
+        m_logger.log("All sessions finished, stopping I/O", LogLevel::INFO);
+        m_ioc.stop();
+    }
+}
+
+void HttpServer::endSession(std::function<void()> restartAccept)  // NOLINT
+{
+    --m_activeSessions;
+    m_logger.log("Session ended. Active: " + std::to_string(m_activeSessions.load()),
+                 LogLevel::DEBUG);
+    restartAccept();
+    if (m_draining)
+        checkDrainComplete();
 }
 
 // Determines whether to keep the connection alive after sending a response

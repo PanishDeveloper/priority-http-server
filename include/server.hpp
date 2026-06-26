@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -33,7 +34,9 @@ private:
     void shutdown();
     void doAccept();
     void handleSession(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
-                       std::function<void()>                                restartAccept);
+                       std::function<void()> restartAccept, bool isNewSession = true);
+    void checkDrainComplete();
+    void endSession(std::function<void()> restartAccept);
 
     [[nodiscard]] static bool isKeepAlive(
         const std::shared_ptr<const http::request<http::string_body>>& request,
@@ -48,4 +51,6 @@ private:
     std::vector<std::thread>                        m_ioThreads;
     std::unique_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
     std::unique_ptr<RequestProcessor>               m_processor;
+    std::atomic<bool>                               m_draining{false};
+    std::atomic<size_t>                             m_activeSessions{0};
 };
