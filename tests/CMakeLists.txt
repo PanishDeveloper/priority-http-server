@@ -16,9 +16,11 @@ add_executable(prserver_test
         ${PROJECT_SOURCE_DIR}/src/static_file_handler.cpp
         ${PROJECT_SOURCE_DIR}/src/logger.cpp
         ${PROJECT_SOURCE_DIR}/src/request_processor.cpp
+        ${PROJECT_SOURCE_DIR}/src/session.cpp
         thread_pool_test.cpp
         router_test.cpp
         logger_test.cpp
+        integration_test.cpp
 )
 
 target_include_directories(prserver_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -30,4 +32,4 @@ else()
     target_link_libraries(prserver_test PRIVATE Boost::thread)
 endif()
 
-gtest_discover_tests(prserver_test)
+gtest_discover_tests(prserver_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
