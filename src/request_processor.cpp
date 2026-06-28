@@ -37,7 +37,6 @@ HttpTask::ComputeFn RequestProcessor::createComputeStrategy()
                 return res;
             }
             std::sort(numbers.begin(), numbers.end());
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             nlohmann::json data;
             data["sorted"] = numbers;
             data["size"]   = numbers.size();
@@ -68,11 +67,11 @@ void RequestProcessor::sendResponseAsync(
 {
     boost::asio::post(
         m_ioc,
-        [session, response = std::move(response), reqPtr = std::move(reqPtr)]() mutable
+        [this, session, response = std::move(response), reqPtr = std::move(reqPtr)]() mutable
         {
             auto responsePtr =
                 std::make_shared<http::response<http::string_body>>(std::move(response));
-            HttpServer::sendResponse(session, responsePtr, reqPtr);
+            m_server.sendResponse(session, responsePtr, reqPtr);
         });
 }
 
@@ -102,11 +101,10 @@ void RequestProcessor::process(std::shared_ptr<const http::request<http::string_
         if (!m_router.route(*reqPtr, res))
             utils::sendNotFound(res);
 
-        res.set(http::field::server, "PriorityHttpServer/1.0");
         res.prepare_payload();
 
         auto responsePtr = std::make_shared<http::response<http::string_body>>(std::move(res));
 
-        HttpServer::sendResponse(session, responsePtr, reqPtr);
+        m_server.sendResponse(session, responsePtr, reqPtr);
     }
 }

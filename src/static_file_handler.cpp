@@ -84,7 +84,7 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req,
     }
 
     // 7. Checking the file size
-    size_t fileSize = static_cast<size_t>(fs::file_size(fullPath, ec));
+    auto fileSize = static_cast<size_t>(fs::file_size(fullPath, ec));
     if (ec)
     {
         utils::sendNotFound(res);
