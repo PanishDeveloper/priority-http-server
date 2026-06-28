@@ -1,0 +1,8 @@
+//
+// Created by Кирилл Панишев on 28.06.2026.
+//
+
+#ifndef PRIORITY_HTTP_SERVER_CONFIG_HPP
+#define PRIORITY_HTTP_SERVER_CONFIG_HPP
+
+#endif //PRIORITY_HTTP_SERVER_CONFIG_HPP
