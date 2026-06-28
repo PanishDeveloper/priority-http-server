@@ -115,7 +115,7 @@ TEST(IntegrationTest, ComputeValidJson)
         GTEST_SKIP() << "Server is not running on localhost:8080";
 
     std::string jsonBody = "[5,2,8,1]";
-    auto res = doRequest(http::verb::post,"/compute", jsonBody, "application/json");
+    auto        res      = doRequest(http::verb::post, "/compute", jsonBody, "application/json");
 
     EXPECT_EQ(res.result(), http::status::ok);
 
@@ -125,7 +125,7 @@ TEST(IntegrationTest, ComputeValidJson)
     EXPECT_TRUE(json.contains("data"));
     EXPECT_TRUE(json["data"].contains("sorted"));
     auto sorted = json["data"]["sorted"].get<std::vector<int>>();
-    EXPECT_EQ(sorted, (std::vector<int>{1,2,5,8}));
+    EXPECT_EQ(sorted, (std::vector<int>{1, 2, 5, 8}));
     EXPECT_EQ(json["data"]["size"], 4);
 }
 
@@ -135,7 +135,7 @@ TEST(IntegrationTest, ComputeInvalidJson)
         GTEST_SKIP() << "Server is not running on localhost:8080";
 
     std::string invalidJson = "{not json";
-    auto res = doRequest(http::verb::post,"/compute", invalidJson, "application/json");
+    auto        res = doRequest(http::verb::post, "/compute", invalidJson, "application/json");
 
     EXPECT_EQ(res.result(), http::status::bad_request);
     auto json = nlohmann::json::parse(res.body());
