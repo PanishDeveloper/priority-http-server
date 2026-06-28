@@ -154,7 +154,7 @@ void Session::close()
     m_closed = true;
     m_timer.cancel();
     boost::system::error_code ec;
-    std::ignore = m_socket.shutdown(tcp::socket::shutdown_both, ec);  // подавляем предупреждение
+    std::ignore = m_socket.shutdown(tcp::socket::shutdown_both, ec);  // suppressing the warning 
     std::ignore = m_socket.close(ec);
     endSession();
 }

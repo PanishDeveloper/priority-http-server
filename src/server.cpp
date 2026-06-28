@@ -107,7 +107,7 @@ void HttpServer::doAccept()
         m_logger.log("Max connections reached (" + std::to_string(m_config.max_connections) +
                          "), rejecting new connection",
                      LogLevel::WARNING);
-        // Принимаем сокет и сразу закрываем, чтобы клиент получил сброс
+        // Accept socket and close immediately so client gets a reset
         auto socket = std::make_shared<tcp::socket>(m_ioc);
         m_acceptor->async_accept(*socket,
                                  [this, socket](const boost::system::error_code& ec)
@@ -141,7 +141,6 @@ void HttpServer::doAccept()
             }
             doAccept();
 
-            // CHANGED: передаём параметры из конфига в Session
             auto session = std::make_shared<Session>(std::move(*socket), m_ioc, *this, *m_processor,
                                                      m_logger, m_config.keepalive_timeout_sec,
                                                      m_config.max_keepalive_requests,
