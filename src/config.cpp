@@ -9,7 +9,7 @@ nlohmann::json Config::toJson(const Config& config)
     nlohmann::json json;
     json["port"]                    = config.port;
     json["bind_address"]            = config.bind_address;
-    json["pool_size"]               = config.pool_size;
+    json["pool_size"]               = config.threads;
     json["io_threads"]              = config.io_threads;
     json["static_root"]             = config.static_root;
     json["static_max_file_size_mb"] = config.static_max_file_size_mb;
@@ -51,7 +51,7 @@ Config Config::fromJson(const nlohmann::json& json)
 
     safeSet("port", config.port,
         [](const nlohmann::json& v) { return v.get<unsigned short>(); });
-    safeSet("pool_size", config.pool_size,
+    safeSet("pool_size", config.threads,
         [](const nlohmann::json& v) { return v.get<size_t>(); });
     safeSet("io_threads", config.io_threads,
             [](const nlohmann::json& v) { return v.get<unsigned int>(); });
@@ -115,7 +115,7 @@ Config Config::fromArgs(Config config, int argc, char* argv[])
         else if (arg == "-t" || arg == "--threads")
         {
             if (hasNext(i, argc))
-                config.pool_size = std::stoul(argv[++i], nullptr, 10);
+                config.threads = std::stoul(argv[++i], nullptr, 10);
         }
         else if (arg == "-i" || arg == "--io-threads")
         {

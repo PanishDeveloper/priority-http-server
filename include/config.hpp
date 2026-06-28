@@ -11,7 +11,7 @@ struct Config
     std::string          bind_address = "0.0.0.0";                   // IP address for binding (all interfaces)
 
     // Streams and pools
-    size_t               pool_size =
+    size_t               threads =
         std::thread::hardware_concurrency();                         // Threads in the ThreadPool (CPU - bound tasks)
     unsigned int         io_threads              = 4;                // Streams for network I/O
 

@@ -19,7 +19,7 @@ using tcp       = asio::ip::tcp;
 HttpServer::HttpServer(asio::io_context& ioc, const Config& config)
     : m_ioc(ioc),
       m_config(config),
-      m_pool(config.pool_size, config.max_queue_size),
+      m_pool(config.threads, config.max_queue_size),
       m_logger(config.log_file_path.empty()
                    ? std::unique_ptr<LogSink>(std::make_unique<ConsoleSink>())
                    : std::unique_ptr<LogSink>(std::make_unique<FileSink>(config.log_file_path))),
@@ -45,7 +45,8 @@ void HttpServer::run()
 void HttpServer::setup()
 {
     m_logger.start();
-    m_logger.log("Server starting...", LogLevel::INFO);
+    m_logger.log("Server starting... Compute: " + std::to_string(m_config.threads) +
+             " threads, I/O: " + std::to_string(m_config.io_threads) + " threads", LogLevel::INFO);
 
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     m_router.addRoute(http::verb::get, "/static/",
@@ -83,7 +84,7 @@ void HttpServer::startAcceptorLoop()
     asio::ip::address address = asio::ip::make_address(m_config.bind_address);
     tcp::endpoint     endpoint(address, m_config.port);
     m_acceptor = std::make_unique<tcp::acceptor>(m_ioc, endpoint);
-    m_logger.log("Server listening on port " + std::to_string(m_config.port), LogLevel::INFO);
+    m_logger.log("Server listening on " + m_config.bind_address + ":" + std::to_string(m_config.port), LogLevel::INFO);
 
     doAccept();
 
