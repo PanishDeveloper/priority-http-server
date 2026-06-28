@@ -31,6 +31,11 @@ struct LogMessage
     }
 };
 
+// Convert LogLevel to string (e.g., "INFO")
+const char* logLevelToStr(LogLevel level);
+// Convert string to LogLevel (case-insensitive)
+LogLevel stringToLogLevel(const std::string& level);
+
 class MessageQueue
 {
 public:

@@ -16,15 +16,17 @@ namespace beast = boost::beast;
 namespace http  = beast::http;
 using tcp       = asio::ip::tcp;
 
-HttpServer::HttpServer(asio::io_context& ioc, unsigned short port, size_t numThreads,
-                       std::unique_ptr<LogSink> sink)
+HttpServer::HttpServer(asio::io_context& ioc, const Config& config)
     : m_ioc(ioc),
-      m_port(port),
-      m_pool(numThreads),
-      m_logger(std::move(sink)),
+      m_config(config),
+      m_pool(config.pool_size, config.max_queue_size),
+      m_logger(config.log_file_path.empty()
+                   ? std::unique_ptr<LogSink>(std::make_unique<ConsoleSink>())
+                   : std::unique_ptr<LogSink>(std::make_unique<FileSink>(config.log_file_path))),
       m_signals(m_ioc, SIGINT, SIGTERM)
 {
     m_processor = std::make_unique<RequestProcessor>(m_router, *this, m_pool, m_ioc);
+    setLogLevel(m_config.log_level);
 }
 
 HttpServer::~HttpServer()
@@ -47,9 +49,11 @@ void HttpServer::setup()
 
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     m_router.addRoute(http::verb::get, "/static/",
-                      std::make_unique<StaticFileHandler>("static", 10 * 1024 * 1024));
+                      std::make_unique<StaticFileHandler>(
+                          m_config.static_root, m_config.static_max_file_size_mb * 1024 * 1024));
     m_router.addRoute(http::verb::head, "/static/",
-                      std::make_unique<StaticFileHandler>("static", 10 * 1024 * 1024));
+                      std::make_unique<StaticFileHandler>(
+                          m_config.static_root, m_config.static_max_file_size_mb * 1024 * 1024));
 
     m_pool.start();
 
@@ -76,17 +80,16 @@ void HttpServer::setup()
 
 void HttpServer::startAcceptorLoop()
 {
-    m_acceptor = std::make_unique<tcp::acceptor>(m_ioc, tcp::endpoint(tcp::v4(), m_port));
-    m_logger.log("Server listening on port " + std::to_string(m_port), LogLevel::INFO);
+    asio::ip::address address = asio::ip::make_address(m_config.bind_address);
+    tcp::endpoint     endpoint(address, m_config.port);
+    m_acceptor = std::make_unique<tcp::acceptor>(m_ioc, endpoint);
+    m_logger.log("Server listening on port " + std::to_string(m_config.port), LogLevel::INFO);
 
     doAccept();
 
-    unsigned int numIoThreads = std::thread::hardware_concurrency();
+    unsigned int numIoThreads = m_config.io_threads;
     if (numIoThreads == 0)
-        numIoThreads = 2;
-    if (numIoThreads > 4)
-        numIoThreads = 4;
-
+        numIoThreads = 1;
     m_ioThreads.reserve(numIoThreads);
     for (unsigned int i = 0; i < numIoThreads; ++i)
         m_ioThreads.emplace_back([this] { m_ioc.run(); });
@@ -96,6 +99,27 @@ void HttpServer::doAccept()
 {
     if (m_ioc.stopped() || m_draining)
         return;
+
+    // Checking the connection limit
+    if (m_activeSessions >= m_config.max_connections)
+    {
+        m_logger.log("Max connections reached (" + std::to_string(m_config.max_connections) +
+                         "), rejecting new connection",
+                     LogLevel::WARNING);
+        // Принимаем сокет и сразу закрываем, чтобы клиент получил сброс
+        auto socket = std::make_shared<tcp::socket>(m_ioc);
+        m_acceptor->async_accept(*socket,
+                                 [this, socket](const boost::system::error_code& ec)
+                                 {
+                                     if (!ec)
+                                     {
+                                         boost::system::error_code close_ec;
+                                         std::ignore = socket->close(close_ec);
+                                     }
+                                     doAccept();
+                                 });
+        return;
+    }
 
     auto socket = std::make_shared<tcp::socket>(m_ioc);
 
@@ -116,9 +140,11 @@ void HttpServer::doAccept()
             }
             doAccept();
 
-            // Create a session and add it to the storage
+            // CHANGED: передаём параметры из конфига в Session
             auto session = std::make_shared<Session>(std::move(*socket), m_ioc, *this, *m_processor,
-                                                     m_logger, std::chrono::seconds(30));
+                                                     m_logger, m_config.keepalive_timeout_sec,
+                                                     m_config.max_keepalive_requests,
+                                                     m_config.enable_keepalive);
             {
                 std::unique_lock lock(m_sessionsMutex);
                 m_sessions.insert(session);
@@ -131,10 +157,15 @@ void HttpServer::doAccept()
 void HttpServer::sendResponse(
     const std::shared_ptr<Session>&                                session,
     std::shared_ptr<http::response<http::string_body>>             response,
-    const std::shared_ptr<const http::request<http::string_body>>& request)
+    const std::shared_ptr<const http::request<http::string_body>>& request) const
 {
-    // Determining whether to keep the connection open
-    bool keepAlive = isKeepAlive(request, boost::system::error_code());
+    response->set(http::field::server, m_config.server_name);
+    if (!m_config.cors_allow_origin.empty())
+    {
+        response->set(http::field::access_control_allow_origin, m_config.cors_allow_origin);
+    }
+
+    bool keepAlive = isKeepAlive(request, boost::system::error_code()) && m_config.enable_keepalive;
     session->sendResponse(std::move(response), keepAlive);
 }
 

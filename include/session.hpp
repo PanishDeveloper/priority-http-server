@@ -21,7 +21,8 @@ class Session : public std::enable_shared_from_this<Session>
 {
 public:
     Session(tcp::socket socket, asio::io_context& ioc, HttpServer& server,
-            RequestProcessor& processor, AsyncLogger& logger, std::chrono::seconds timeout);
+            RequestProcessor& processor, AsyncLogger& logger, std::chrono::seconds timeout,
+            size_t maxKeepaliveRequests, bool enableKeepalive);
     // Starts reading the first request
     void start();
     // Forcibly closes the session
@@ -48,4 +49,7 @@ private:
     bool                                                     m_closed    = false;
     bool                                                     m_ended     = false;
     asio::strand<asio::io_context::executor_type>            m_strand;
+    size_t                                                   m_maxKeepaliveRequests;
+    bool                                                     m_enableKeepalive;
+    size_t                                                   m_requestCount = 0;
 };

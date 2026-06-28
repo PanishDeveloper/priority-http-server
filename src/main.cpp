@@ -1,14 +1,18 @@
 #include "server.hpp"
 
-int main()
+int main(int argc, char* argv[])
 {
-    unsigned int numThreads = std::thread::hardware_concurrency();
-    if (numThreads == 0)
-        numThreads = 4;
+    if (hasHelpFLag(argc, argv))
+    {
+        printHelp();
+        return 0;
+    }
+
+    auto config = loadConfig(argc, argv);
 
     boost::asio::io_context ioc;
-    HttpServer              server(ioc, 8080, numThreads, std::make_unique<ConsoleSink>());
-    server.setLogLevel(LogLevel::INFO);
+    HttpServer              server(ioc, config);
+    server.setLogLevel(config.log_level);
     server.run();
 
     return 0;

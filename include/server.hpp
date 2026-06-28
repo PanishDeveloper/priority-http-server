@@ -7,6 +7,7 @@
 #include <shared_mutex>
 #include <unordered_set>
 
+#include "config.hpp"
 #include "logger.hpp"
 #include "request_processor.hpp"
 #include "router.hpp"
@@ -19,23 +20,22 @@ class Session;  // forward declaration
 class HttpServer
 {
 public:
-    explicit HttpServer(boost::asio::io_context& ioc, unsigned short port,
-                        size_t                   numThreads = std::thread::hardware_concurrency(),
-                        std::unique_ptr<LogSink> sink       = std::make_unique<ConsoleSink>());
+    explicit HttpServer(boost::asio::io_context& ioc, const Config& config);
     ~HttpServer();
 
     void        run();
     void        setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
-    static void sendResponse(
+    void sendResponse(
         const std::shared_ptr<Session>&                                session,
         std::shared_ptr<http::response<http::string_body>>             response,
-        const std::shared_ptr<const http::request<http::string_body>>& request);
+        const std::shared_ptr<const http::request<http::string_body>>& request) const;
     // Method for ending the session
     void                       endSession(const std::shared_ptr<Session>& session);
     void                       incrementSessions() { ++m_activeSessions; }
     size_t                     getActiveSessions() const { return m_activeSessions.load(); }
     bool                       isDraining() const noexcept { return m_draining.load(); }
     [[nodiscard]] AsyncLogger& getLogger() { return m_logger; }
+    const Config&              getConfig() const noexcept { return m_config; }
 
 private:
     void setup();
@@ -49,7 +49,7 @@ private:
         const boost::system::error_code&                               ec) noexcept;
 
     boost::asio::io_context&                        m_ioc;
-    unsigned short                                  m_port;
+    Config                                          m_config;
     ThreadPool                                      m_pool;
     Router                                          m_router;
     AsyncLogger                                     m_logger;

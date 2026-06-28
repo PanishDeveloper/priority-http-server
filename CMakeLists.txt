@@ -29,6 +29,7 @@ add_executable(prserver
         src/logger.cpp
         src/request_processor.cpp
         src/session.cpp
+        src/config.cpp
 )
 
 target_include_directories(prserver PUBLIC include)

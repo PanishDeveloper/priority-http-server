@@ -6,14 +6,17 @@
 #include "utils.hpp"
 
 Session::Session(tcp::socket socket, asio::io_context& ioc, HttpServer& server,
-                 RequestProcessor& processor, AsyncLogger& logger, std::chrono::seconds timeout)
+                 RequestProcessor& processor, AsyncLogger& logger, std::chrono::seconds timeout,
+                 size_t maxKeepaliveRequests, bool enableKeepalive)
     : m_socket(std::move(socket)),
       m_timer(ioc),
       m_server(server),
       m_processor(processor),
       m_logger(logger),
       m_timeout(timeout),
-      m_strand(asio::make_strand(ioc))
+      m_strand(asio::make_strand(ioc)),
+      m_maxKeepaliveRequests(maxKeepaliveRequests),
+      m_enableKeepalive(enableKeepalive)
 {
 }
 
@@ -32,7 +35,7 @@ void Session::doRead()
         return;
 
     m_parser.emplace();
-    m_parser->body_limit(10 * 1024 * 1024);
+    m_parser->body_limit(m_server.getConfig().body_limit_mb * 1024 * 1024);
 
     m_timer.expires_after(m_timeout);
     m_timer.async_wait(
@@ -74,6 +77,7 @@ void Session::onRead(const boost::system::error_code& ec)
         return;
     }
 
+    ++m_requestCount;
     const auto& request = m_parser->get();
 
     int  priority = 0;
@@ -93,9 +97,8 @@ void Session::onRead(const boost::system::error_code& ec)
     if (priority != 0)
     {
         static std::atomic<unsigned int> nonZeroCounter{0};
-        unsigned int                     current     = ++nonZeroCounter;
-        constexpr unsigned int           SAMPLE_RATE = 10;
-        if (current % SAMPLE_RATE == 0)
+        unsigned int                     current = ++nonZeroCounter;
+        if (current % m_server.getConfig().sample_rate == 0)
         {
             m_logger.log("Request priority: " + std::to_string(priority) +
                              " (sampled, total non-zero=" + std::to_string(current) + ")",
@@ -119,7 +122,10 @@ void Session::onWrite(const boost::system::error_code& ec)
         return;
     }
 
-    if (!m_keepAlive || m_server.isDraining())
+    bool shouldKeepAlive =
+        m_keepAlive && m_enableKeepalive && (m_requestCount < m_maxKeepaliveRequests);
+
+    if (!shouldKeepAlive || m_server.isDraining())
     {
         if (m_server.isDraining())
             m_logger.log("Draining: closing connection", LogLevel::INFO);
