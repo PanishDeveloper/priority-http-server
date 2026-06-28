@@ -17,6 +17,7 @@ add_executable(prserver_test
         ${PROJECT_SOURCE_DIR}/src/logger.cpp
         ${PROJECT_SOURCE_DIR}/src/request_processor.cpp
         ${PROJECT_SOURCE_DIR}/src/session.cpp
+        ${PROJECT_SOURCE_DIR}/src/config.cpp
         thread_pool_test.cpp
         router_test.cpp
         logger_test.cpp
