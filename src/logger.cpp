@@ -1,6 +1,7 @@
 #include "logger.hpp"
 
 #include <iostream>
+#include <boost/algorithm/string.hpp>
 
 #include "utils.hpp"
 
@@ -12,14 +13,6 @@ std::string formatLogMessage(const LogMessage& msg)
     oss << '[' << utils::formatTimePoint(msg.timestamp) << ']' << '[' << logLevelToStr(msg.level)
         << "] " << msg.message;
     return oss.str();
-}
-
-std::string toUpper(const std::string& str)
-{
-    std::string result = str;
-    std::transform(result.begin(), result.end(), result.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
-    return result;
 }
 }  // namespace
 
@@ -42,7 +35,8 @@ const char* logLevelToStr(LogLevel level)
 
 LogLevel stringToLogLevel(const std::string& level)
 {
-    std::string upper = toUpper(level);
+    std::string upper = level;
+    boost::algorithm::to_upper(upper);
     if (upper == "DEBUG")
         return LogLevel::DEBUG;
     if (upper == "INFO")
