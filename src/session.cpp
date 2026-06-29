@@ -1,7 +1,5 @@
 #include "session.hpp"
 
-#include <tuple>
-
 #include "server.hpp"
 #include "utils.hpp"
 
@@ -22,7 +20,6 @@ Session::Session(tcp::socket socket, asio::io_context& ioc, HttpServer& server,
 
 void Session::start()
 {
-    m_server.incrementSessions();
     m_logger.log("Session started. Active: " + std::to_string(m_server.getActiveSessions()),
                  LogLevel::DEBUG);
     auto self = shared_from_this();
@@ -149,14 +146,18 @@ void Session::onTimeout(const boost::system::error_code& ec)
 
 void Session::close()
 {
-    if (m_closed)
-        return;
-    m_closed = true;
-    m_timer.cancel();
-    boost::system::error_code ec;
-    std::ignore = m_socket.shutdown(tcp::socket::shutdown_both, ec);  // suppressing the warning 
-    std::ignore = m_socket.close(ec);
-    endSession();
+    asio::post(m_strand,
+               [self = shared_from_this()]()
+               {
+                   if (self->m_closed)
+                       return;
+                   self->m_closed = true;
+                   self->m_timer.cancel();
+                   boost::system::error_code ec;
+                   self->m_socket.shutdown(tcp::socket::shutdown_both, ec);  // NOLINT
+                   self->m_socket.close(ec);                                 // NOLINT
+                   self->endSession();
+               });
 }
 
 void Session::endSession()
