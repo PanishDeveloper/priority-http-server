@@ -46,7 +46,8 @@ void HttpServer::setup()
 {
     m_logger.start();
     m_logger.log("Server starting... Compute: " + std::to_string(m_config.threads) +
-             " threads, I/O: " + std::to_string(m_config.io_threads) + " threads", LogLevel::INFO);
+                     " threads, I/O: " + std::to_string(m_config.io_threads) + " threads",
+                 LogLevel::INFO);
 
     m_router.addRoute(http::verb::get, "/status", std::make_unique<StatusHandler>(m_pool));
     m_router.addRoute(http::verb::get, "/static/",
@@ -84,7 +85,9 @@ void HttpServer::startAcceptorLoop()
     asio::ip::address address = asio::ip::make_address(m_config.bind_address);
     tcp::endpoint     endpoint(address, m_config.port);
     m_acceptor = std::make_unique<tcp::acceptor>(m_ioc, endpoint);
-    m_logger.log("Server listening on " + m_config.bind_address + ":" + std::to_string(m_config.port), LogLevel::INFO);
+    m_logger.log(
+        "Server listening on " + m_config.bind_address + ":" + std::to_string(m_config.port),
+        LogLevel::INFO);
 
     doAccept();
 
@@ -102,7 +105,7 @@ void HttpServer::doAccept()
         return;
 
     // Checking the connection limit
-    if (m_activeSessions >= m_config.max_connections)
+    if (m_activeSessions.load() >= m_config.max_connections)
     {
         m_logger.log("Max connections reached (" + std::to_string(m_config.max_connections) +
                          "), rejecting new connection",
@@ -148,6 +151,7 @@ void HttpServer::doAccept()
             {
                 std::unique_lock lock(m_sessionsMutex);
                 m_sessions.insert(session);
+                ++m_activeSessions;
             }
             session->start();
         });
@@ -175,8 +179,8 @@ void HttpServer::endSession(const std::shared_ptr<Session>& session)
     {
         std::unique_lock lock(m_sessionsMutex);
         m_sessions.erase(session);
+        --m_activeSessions;
     }
-    --m_activeSessions;
     m_logger.log("Session ended. Active: " + std::to_string(m_activeSessions.load()),
                  LogLevel::DEBUG);
     if (m_draining)
@@ -185,7 +189,7 @@ void HttpServer::endSession(const std::shared_ptr<Session>& session)
 
 void HttpServer::checkDrainComplete()
 {
-    if (m_draining && m_activeSessions == 0)
+    if (m_draining && m_activeSessions.load() == 0)
     {
         m_logger.log("All sessions finished, stopping I/O", LogLevel::INFO);
         m_ioc.stop();

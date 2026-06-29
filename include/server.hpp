@@ -23,15 +23,13 @@ public:
     explicit HttpServer(boost::asio::io_context& ioc, const Config& config);
     ~HttpServer();
 
-    void        run();
-    void        setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
-    void sendResponse(
-        const std::shared_ptr<Session>&                                session,
-        std::shared_ptr<http::response<http::string_body>>             response,
-        const std::shared_ptr<const http::request<http::string_body>>& request) const;
+    void run();
+    void setLogLevel(LogLevel level) noexcept { m_logger.setMinLevel(level); }
+    void sendResponse(const std::shared_ptr<Session>&                                session,
+                      std::shared_ptr<http::response<http::string_body>>             response,
+                      const std::shared_ptr<const http::request<http::string_body>>& request) const;
     // Method for ending the session
     void                       endSession(const std::shared_ptr<Session>& session);
-    void                       incrementSessions() { ++m_activeSessions; }
     size_t                     getActiveSessions() const { return m_activeSessions.load(); }
     bool                       isDraining() const noexcept { return m_draining.load(); }
     [[nodiscard]] AsyncLogger& getLogger() { return m_logger; }
