@@ -171,12 +171,15 @@ void Session::endSession()
 void Session::sendResponse(std::shared_ptr<http::response<http::string_body>> response,
                            bool                                               keepAlive)
 {
-    m_keepAlive = keepAlive;
-    if (m_closed)
-        return;
-    http::async_write(
-        m_socket, *response,
-        asio::bind_executor(
-            m_strand, [self = shared_from_this(), response = std::move(response)](
-                          const boost::system::error_code& ec, size_t) { self->onWrite(ec); }));
+    asio::dispatch(m_strand, [self = shared_from_this(), response = std::move(response), keepAlive]()
+    {
+        if (self->m_closed)
+            return;
+        self->m_keepAlive = keepAlive;
+        http::async_write(
+            self->m_socket, *response,
+            asio::bind_executor(
+                self->m_strand, [self, response](
+                              const boost::system::error_code& ec, size_t) { self->onWrite(ec); }));
+    });
 }
