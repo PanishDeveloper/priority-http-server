@@ -54,14 +54,3 @@ if(Boost_VERSION VERSION_LESS 1.89.0)
 else()
     target_link_libraries(prserver PRIVATE Boost::thread)
 endif()
-
-
-option(ENABLE_SANITIZERS "Enable Address and Thread sanitizers" OFF)
-
-if(ENABLE_SANITIZERS)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        # ThreadSanitizer (включим отдельно, раскомментировав строки ниже)
-        target_compile_options(prserver PRIVATE -fsanitize=thread -fno-omit-frame-pointer)
-        target_link_options(prserver PRIVATE -fsanitize=thread)
-    endif()
-endif()
