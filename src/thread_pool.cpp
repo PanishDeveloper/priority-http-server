@@ -11,7 +11,7 @@ bool TaskQueue::push(std::unique_ptr<Task> task, int priority)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        if (m_queue.size() >= m_maxQueueSize)
+        if (m_done || m_queue.size() >= m_maxQueueSize)
             return false;
 
         m_queue.push_back(PrioritizedTask{priority, m_order++, std::move(task),
