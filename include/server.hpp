@@ -1,9 +1,9 @@
 #pragma once
 
 #include <atomic>
-#include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/signal_set.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <shared_mutex>
 #include <unordered_set>
 
@@ -43,8 +43,7 @@ private:
     void checkDrainComplete();
 
     [[nodiscard]] static bool isKeepAlive(
-        const std::shared_ptr<const http::request<http::string_body>>& request,
-        const boost::system::error_code&                               ec) noexcept;
+        const std::shared_ptr<const http::request<http::string_body>>& request) noexcept;
 
     boost::asio::io_context&                        m_ioc;
     Config                                          m_config;
@@ -52,11 +51,13 @@ private:
     Router                                          m_router;
     AsyncLogger                                     m_logger;
     boost::asio::signal_set                         m_signals;
+    boost::asio::steady_timer                       m_drainTimer;
     std::vector<std::thread>                        m_ioThreads;
     std::unique_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
     std::unique_ptr<RequestProcessor>               m_processor;
     std::unordered_set<std::shared_ptr<Session>>    m_sessions;
     mutable std::shared_mutex                       m_sessionsMutex;
     std::atomic<bool>                               m_draining{false};
+    std::atomic<bool>                               m_shutdownDone{false};
     std::atomic<size_t>                             m_activeSessions{0};
 };

@@ -23,7 +23,8 @@ HttpServer::HttpServer(asio::io_context& ioc, const Config& config)
       m_logger(config.log_file_path.empty()
                    ? std::unique_ptr<LogSink>(std::make_unique<ConsoleSink>())
                    : std::unique_ptr<LogSink>(std::make_unique<FileSink>(config.log_file_path))),
-      m_signals(m_ioc, SIGINT, SIGTERM)
+      m_signals(m_ioc, SIGINT, SIGTERM),
+      m_drainTimer(m_ioc)
 {
     m_processor = std::make_unique<RequestProcessor>(m_router, *this, m_pool, m_ioc);
     setLogLevel(m_config.log_level);
@@ -68,13 +69,26 @@ void HttpServer::setup()
                              LogLevel::INFO);
                 m_draining = true;
 
-                // When the signal is given, we close all sessions
-                std::vector<std::shared_ptr<Session>> sessionsToClose;
-                {
-                    std::unique_lock lock(m_sessionsMutex);
-                    sessionsToClose.assign(m_sessions.begin(), m_sessions.end());
-                }
-                for (auto& session : sessionsToClose) session->close();
+                m_drainTimer.expires_after(m_config.drain_timeout_sec);
+                m_drainTimer.async_wait(
+                    [this](const boost::system::error_code& ec)
+                    {
+                        if (ec == asio::error::operation_aborted)
+                            return;
+
+                        m_logger.log("Drain timeout reached, forcing remaining sessions closed",
+                                     LogLevel::WARNING);
+
+                        std::vector<std::shared_ptr<Session>> remaining;
+                        {
+                            std::unique_lock lock(m_sessionsMutex);
+                            remaining.assign(m_sessions.begin(), m_sessions.end());
+                        }
+                        for (auto& s : remaining) s->close();
+                        std::unique_lock lock(m_sessionsMutex);
+                        checkDrainComplete();
+                    });
+                std::unique_lock lock(m_sessionsMutex);
                 checkDrainComplete();
             }
         });
@@ -169,39 +183,41 @@ void HttpServer::sendResponse(
         response->set(http::field::access_control_allow_origin, m_config.cors_allow_origin);
     }
 
-    bool keepAlive = isKeepAlive(request, boost::system::error_code()) && m_config.enable_keepalive;
+    bool keepAlive = isKeepAlive(request) && m_config.enable_keepalive;
     session->sendResponse(std::move(response), keepAlive);
 }
 
 void HttpServer::endSession(const std::shared_ptr<Session>& session)
 {
+    size_t activeAfter = 0;
     // Deleting it from the storage
     {
         std::unique_lock lock(m_sessionsMutex);
         m_sessions.erase(session);
         --m_activeSessions;
+        activeAfter = m_activeSessions.load();
+        if (m_draining)
+            checkDrainComplete();
     }
-    m_logger.log("Session ended. Active: " + std::to_string(m_activeSessions.load()),
-                 LogLevel::DEBUG);
-    if (m_draining)
-        checkDrainComplete();
+    m_logger.log("Session ended. Active: " + std::to_string(activeAfter), LogLevel::DEBUG);
 }
 
 void HttpServer::checkDrainComplete()
 {
     if (m_draining && m_activeSessions.load() == 0)
     {
+        m_drainTimer.cancel();
         m_logger.log("All sessions finished, stopping I/O", LogLevel::INFO);
         m_ioc.stop();
     }
 }
 
 // Determines whether to keep the connection alive after sending a response
-bool HttpServer::isKeepAlive(const std::shared_ptr<const http::request<http::string_body>>& request,
-                             const boost::system::error_code& ec) noexcept
+bool HttpServer::isKeepAlive(
+    const std::shared_ptr<const http::request<http::string_body>>& request) noexcept
 {
     // If there is a write error or is no request, close the connection
-    if (ec || !request)
+    if (!request)
         return false;
 
     const auto& req = *request;
@@ -220,6 +236,10 @@ bool HttpServer::isKeepAlive(const std::shared_ptr<const http::request<http::str
 
 void HttpServer::shutdown()
 {
+    bool expected = false;
+    if (!m_shutdownDone.compare_exchange_strong(expected, true))
+        return;
+
     m_draining = true;
     {
         std::vector<std::shared_ptr<Session>> sessionsToClose;
@@ -235,7 +255,14 @@ void HttpServer::shutdown()
             th.join();
 
     m_logger.log("Shutting down pool...", LogLevel::INFO);
-    m_pool.shutdown();
+    size_t abandonedWorkers = m_pool.shutdownWithTimeout(m_config.drain_timeout_sec);
+    if (abandonedWorkers > 0)
+    {
+        m_logger.log("Warning: " + std::to_string(abandonedWorkers) +
+                         " worker thread(s) did not finish within drain_timeout_sec and were "
+                         "abandoned (detached) — server is exiting anyway",
+                     LogLevel::WARNING);
+    }
 
     m_logger.log("Shutting down logger...", LogLevel::INFO);
     m_logger.log("Server stopped.", LogLevel::INFO);
