@@ -50,9 +50,9 @@ Config Config::fromJson(const nlohmann::json& json)
     };
 
     safeSet("port", config.port,
-        [](const nlohmann::json& v) { return v.get<unsigned short>(); });
+            [](const nlohmann::json& v) { return v.get<unsigned short>(); });
     safeSet("threads", config.threads,
-        [](const nlohmann::json& v) { return v.get<size_t>(); });
+            [](const nlohmann::json& v) { return v.get<size_t>(); });
     safeSet("io_threads", config.io_threads,
             [](const nlohmann::json& v) { return v.get<unsigned int>(); });
     safeSet("static_max_file_size_mb", config.static_max_file_size_mb,
@@ -88,6 +88,11 @@ Config Config::fromJson(const nlohmann::json& json)
             std::chrono::seconds(json["keepalive_timeout_sec"].get<long long>());
     if (json.contains("drain_timeout_sec") && json["drain_timeout_sec"].is_number())
         config.drain_timeout_sec = std::chrono::seconds(json["drain_timeout_sec"].get<long long>());
+    if (config.threads == 0)
+    {
+        config.threads = 1;
+        std::cerr << "[Config] Warning: threads was 0, set to 1" << std::endl;
+    }
 
     return config;
 }
@@ -203,6 +208,13 @@ Config Config::fromArgs(Config config, int argc, char* argv[])
                 config.log_file_path = argv[++i];
         }
     }
+
+    if (config.threads == 0)
+    {
+        config.threads = 1;
+        std::cerr << "[Config] Warning: threads was 0, set to 1" << std::endl;
+    }
+
     return config;
 }
 
