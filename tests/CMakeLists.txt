@@ -22,6 +22,7 @@ add_executable(prserver_test
         router_test.cpp
         logger_test.cpp
         integration_test.cpp
+        stuck_worker_test.cpp
 )
 
 target_include_directories(prserver_test PRIVATE ${PROJECT_SOURCE_DIR}/include)

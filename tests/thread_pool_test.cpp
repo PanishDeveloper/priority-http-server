@@ -33,7 +33,8 @@ TEST(ThreadPoolTest, SubmitAndShutdown)
     std::vector<int> results;
     std::mutex       mutex;
     pool.start();
-    for (int i = 0; i < 20; ++i) pool.submit(std::make_unique<DammyTask>(i, results, mutex));
+    for (int i = 0; i < 20; ++i)
+        EXPECT_TRUE(pool.submit(std::make_unique<DammyTask>(i, results, mutex)));
     pool.shutdown();
     EXPECT_EQ(results.size(), 20);
 }
@@ -46,13 +47,14 @@ TEST(ThreadPoolTest, PriorityOrder)
     std::mutex       mutex;
 
     for (int i = 0; i < 5; ++i)
-        pool.submit(std::make_unique<DammyTask>(100 + i, results, mutex, 10), 10);
+        EXPECT_TRUE(pool.submit(std::make_unique<DammyTask>(100 + i, results, mutex, 10), 10));
 
     for (int i = 0; i < 5; ++i)
-        pool.submit(std::make_unique<DammyTask>(300 + i, results, mutex, 60), 0);
+        EXPECT_TRUE(pool.submit(std::make_unique<DammyTask>(300 + i, results, mutex, 60), 0));
 
     for (int i = 0; i < 5; ++i)
-        pool.submit(std::make_unique<DammyTask>(200 + i, results, mutex, 30), 5);
+        EXPECT_TRUE(pool.submit(std::make_unique<DammyTask>(200 + i, results, mutex, 30), 5));
+
     pool.shutdown();
 
     EXPECT_EQ(results.size(), 15);
@@ -114,7 +116,8 @@ TEST(ThreadPoolTest, NoExecutionBeforeStart)
     std::vector<int> results;
     std::mutex       mutex;
 
-    for (int i = 0; i < 5; ++i) pool.submit(std::make_unique<DammyTask>(i, results, mutex, 50), 0);
+    for (int i = 0; i < 5; ++i)
+        EXPECT_TRUE(pool.submit(std::make_unique<DammyTask>(i, results, mutex)));
 
     EXPECT_TRUE(results.empty());
 
