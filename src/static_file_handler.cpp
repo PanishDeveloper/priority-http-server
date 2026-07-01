@@ -114,4 +114,9 @@ void StaticFileHandler::handle(const http::request<http::string_body>& req,
 
     // 10. Answer
     utils::makeResponse(res, http::status::ok, content, mimeType);
+
+    if (req.method() == http::verb::head)
+    {
+        res.body().clear();
+    }
 }

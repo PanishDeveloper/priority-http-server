@@ -127,7 +127,7 @@ void Session::onWrite(const boost::system::error_code& ec)
         if (m_server.isDraining())
             m_logger.log("Draining: closing connection", LogLevel::INFO);
         else
-            m_logger.log("Connection closed", LogLevel::INFO);
+            m_logger.log("Connection closed", LogLevel::DEBUG);
         endSession();
         return;
     }
@@ -171,15 +171,16 @@ void Session::endSession()
 void Session::sendResponse(std::shared_ptr<http::response<http::string_body>> response,
                            bool                                               keepAlive)
 {
-    asio::dispatch(m_strand, [self = shared_from_this(), response = std::move(response), keepAlive]()
-    {
-        if (self->m_closed)
-            return;
-        self->m_keepAlive = keepAlive;
-        http::async_write(
-            self->m_socket, *response,
-            asio::bind_executor(
-                self->m_strand, [self, response](
-                              const boost::system::error_code& ec, size_t) { self->onWrite(ec); }));
-    });
+    asio::dispatch(m_strand,
+                   [self = shared_from_this(), response = std::move(response), keepAlive]()
+                   {
+                       if (self->m_closed)
+                           return;
+                       self->m_keepAlive = keepAlive;
+                       http::async_write(
+                           self->m_socket, *response,
+                           asio::bind_executor(self->m_strand,
+                                               [self, response](const boost::system::error_code& ec,
+                                                                size_t) { self->onWrite(ec); }));
+                   });
 }
