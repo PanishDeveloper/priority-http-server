@@ -1,7 +1,9 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -23,6 +25,7 @@ public:
     [[nodiscard]] std::unique_ptr<Task> pop();
     void                                shutdown();
     [[nodiscard]] size_t                size() const noexcept;
+    void                                abort();
 
 private:
     struct PrioritizedTask
@@ -52,22 +55,36 @@ private:
     size_t                                m_maxQueueSize;
     static constexpr std::chrono::seconds AGING_THRESHOLD{1};
     void                                  applyAging();
+    std::atomic<bool>                     m_abort{false};
 };
 
 class WorkerThread
 {
 public:
-    explicit WorkerThread(TaskQueue& queue) noexcept;
+    explicit WorkerThread(std::shared_ptr<TaskQueue> queue);
     ~WorkerThread();
-    WorkerThread(WorkerThread&&) noexcept            = default;
-    WorkerThread& operator=(WorkerThread&&) noexcept = default;
+    WorkerThread(WorkerThread&&)                 = default;
+    WorkerThread& operator=(WorkerThread&&)      = default;
+    WorkerThread(const WorkerThread&)            = delete;
+    WorkerThread& operator=(const WorkerThread&) = delete;
 
-    void start();
-    void join();
+    void               start();
+    void               join();
+    bool               joinWithTimeout(std::chrono::milliseconds timeout);
+    void               abandon();
+    [[nodiscard]] bool isAbandoned() const noexcept { return m_abandoned; }
 
 private:
-    TaskQueue*  m_queue;
-    std::thread m_thread;
+    struct RunState
+    {
+        std::shared_ptr<TaskQueue> queue;
+        std::promise<void>         donePromise;
+    };
+
+    std::shared_ptr<RunState> m_state;
+    std::thread               m_thread;
+    std::future<void>         m_doneFuture;
+    bool                      m_abandoned = false;
 };
 
 class ThreadPool
@@ -77,13 +94,14 @@ public:
                         size_t maxQueueSize = 1000);
     ~ThreadPool();
 
-    bool                 submit(std::unique_ptr<Task> task, int priority = 0);
-    void                 start();
-    void                 shutdown() noexcept;
+    [[nodiscard]] bool   submit(std::unique_ptr<Task> task, int priority = 0) const;
+    void                 start() const;
+    void                 shutdown() const noexcept;
+    [[nodiscard]] size_t shutdownWithTimeout(std::chrono::milliseconds timeout) const noexcept;
     [[nodiscard]] size_t threadCount() const { return m_workers.size(); }
-    [[nodiscard]] size_t pendingTasks() const { return m_queue.size(); }
+    [[nodiscard]] size_t pendingTasks() const { return m_queue->size(); }
 
 private:
-    TaskQueue                 m_queue;
-    std::vector<WorkerThread> m_workers;
+    std::shared_ptr<TaskQueue>                 m_queue;
+    std::vector<std::unique_ptr<WorkerThread>> m_workers;
 };
